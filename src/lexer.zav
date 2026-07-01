@@ -1,0 +1,493 @@
+use ::std::slice::Slice;
+use ::std;
+
+pub struct Lexer {
+    start: *const u8;
+    curr: *const u8;
+    end: *const u8;
+
+    pub fn new(src: Slice[u8]) Lexer {
+        var lexer: Lexer = undefined;
+        lexer.start = src.ptr;
+        lexer.curr = src.ptr;
+        lexer.end = (src.ptr + src.len as *const u8) as *const u8;
+        return lexer;
+    }
+
+    pub fn next_token(self: *Lexer) Token {
+        const whitespace_error = self.skip_whitespace();
+        if (whitespace_error != nullptr) {
+            return self.error(whitespace_error);
+        }
+
+        if (self.at_end()) {
+            return self.emit_token(TokenType::Eof);
+        }
+
+        var tt: TokenType = TokenType::Error;
+        const c = self.advance();
+
+        if (std::str::is_alpha(c)) {
+            return self.keyword();
+        }
+
+        if (std::str::is_numeric(c)) {
+            return self.number();
+        }
+
+        switch (c) {
+            // Arith
+            '~' => tt = TokenType::Tilde;
+            '+' => tt = self.match('=') ? TokenType::PlusEqual : TokenType::Plus;
+            '-' => tt = self.match('=') ? TokenType::MinusEqual : self.match('>') ? TokenType::SmallArrow : TokenType::Minus;
+            '*' => tt = self.match('=') ? TokenType::StarEqual : TokenType::Star;
+            '/' => tt = self.match('=') ? TokenType::SlashEqual : TokenType::Slash;
+            '%' => tt = self.match('=') ? TokenType::PercentEqual : TokenType::Percent;
+            '&' => tt = self.match('=') ? TokenType::AmpersandEqual : TokenType::Ampersand;
+            '^' => tt = self.match('^') ? TokenType::CaretEqual : TokenType::Caret;
+            '|' => tt = self.match('=') ? TokenType::PipeEqual : TokenType::Pipe;
+            // Comparison
+            '=' => tt = self.match('=') ? TokenType::EqualEqual : self.match('>') ? TokenType::BigArrow : TokenType::Equal;
+            '!' => tt = self.match('=') ? TokenType::BangEqual : TokenType::Bang;
+            '>' => tt = self.match('>') ? self.match('=') ? TokenType::ShiftRightEqual : TokenType::ShiftRight : self.match('=') ? TokenType::GreaterEqual : TokenType::Greater;
+            '<' => tt = self.match('<') ? self.match('=') ? TokenType::ShiftLeftEqual : TokenType::ShiftLeft : self.match('=') ? TokenType::LessEqual : TokenType::Less;
+            // Other
+            '.' => tt = self.match('.') ? TokenType::DotDot : TokenType::Dot;
+            ':' => tt = self.match(':') ? self.match('[') ? TokenType::ScopeSquare : TokenType::Scope : TokenType::Colon;
+            '[' => tt = self.match(']') ? TokenType::ArrayType : TokenType::LeftSquare;
+            ']' => tt = TokenType::RightSquare;
+            '{' => tt = TokenType::LeftBrace;
+            '}' => tt = TokenType::RightBrace;
+            '(' => tt = TokenType::LeftParen;
+            ')' => tt = TokenType::RightParen;
+            ';' => tt = TokenType::Semicolon;
+            ',' => tt = TokenType::Comma;
+            '?' => tt = TokenType::QuestionMark;
+            // Literals
+            '@' => return self.native();
+            '"' => return self.string();
+            ''' => return self.char();
+            else => return self.error("unexpected symbol");
+        }
+
+        return self.emit_token(tt);
+    }
+
+    pub fn previous_literal(self: *const Lexer) Slice[u8] {
+        return Slice::[u8]::new(self.start, (self.curr - self.start) as u64);
+    }
+
+    ///////////////////
+    /// Token types ///
+    ///////////////////
+    fn keyword(self: *Lexer) Token {
+        switch (self.previous()) {
+            'a' => switch (self.peek()) {
+                'n' => return self.try_keyword(TokenType::And, @len("nd".*), "nd");
+                's' => return self.try_keyword(TokenType::As, @len("s".*), "s");
+            }
+            'b' => switch (self.peek()) {
+                'o' => return self.try_keyword(TokenType::BoolType, @len("ool".*), "ool");
+                'r' => return self.try_keyword(TokenType::Break, @len("reak".*), "reak");
+            }
+            'c' => switch (self.peek()) {
+                'o' => {
+                    self.advance();
+                    switch (self.peek()) {
+                        'm' => return self.try_keyword(TokenType::Compif, @len("mpif".*), "mpif");
+                        'n' => {
+                            self.advance();
+                            switch (self.peek()) {
+                                's' => return self.try_keyword(TokenType::Const, @len("st".*), "st");
+                                't' => return self.try_keyword(TokenType::Continue, @len("tinue".*), "tinue");
+                            }
+                        }
+                    }
+                }
+            }
+            'd' => switch (self.peek()) {
+                'e' => return self.try_keyword(TokenType::Defer, @len("efer".*), "efer");
+                'o' => return self.try_keyword(TokenType::Do, @len("o".*), "o");
+            }
+            'e' => switch (self.peek()) {
+                'l' => return self.try_keyword(TokenType::Else, @len("lse".*), "lse");
+                'n' => return self.try_keyword(TokenType::Enum, @len("num".*), "num");
+            }
+            'f' => switch (self.peek()) {
+                '3' => return self.try_keyword(TokenType::F32Type, @len("32".*), "32");
+                '6' => return self.try_keyword(TokenType::F64Type, @len("64".*), "64");
+                'a' => return self.try_keyword(TokenType::False, @len("asle".*), "alse");
+                'n' => return self.try_keyword(TokenType::Fn, @len("n".*), "n");
+                'o' => return self.try_keyword(TokenType::For, @len("or".*), "or");
+            }
+            'i' => switch (self.peek()) {
+                '8' => return self.try_keyword(TokenType::I8Type, @len("8".*), "8");
+                '1' => return self.try_keyword(TokenType::I16Type, @len("16".*), "16");
+                '3' => return self.try_keyword(TokenType::I32Type, @len("32".*), "32");
+                '6' => return self.try_keyword(TokenType::I8Type, @len("64".*), "64");
+                'f' => return self.try_keyword(TokenType::If, @len("f".*), "f");
+            }
+            'l' => return self.try_keyword(TokenType::Loop, @len("oop".*), "oop");
+            'm' => return self.try_keyword(TokenType::Mod, @len("od".*), "od");
+            'n' => return self.try_keyword(TokenType::Nullptr, @len("ullptr".*), "ullptr");
+            'o' => switch (self.peek()) {
+                'r' => return self.try_keyword(TokenType::Or, @len("r".*), "r");
+                'v' => return self.try_keyword(TokenType::Overload, @len("verload".*), "verload");
+            }
+            'p' => return self.try_keyword(TokenType::Pub, @len("ub".*), "ub");
+            'r' => return self.try_keyword(TokenType::Return, @len("eturn".*), "eturn");
+            's' => switch (self.peek()) {
+                't' => return self.try_keyword(TokenType::Struct, @len("truct".*), "truct");
+                'u' => return self.try_keyword(TokenType::Super, @len("uper".*), "uper");
+                'w' => return self.try_keyword(TokenType::Switch, @len("witch".*), "witch");
+            }
+            't' => switch (self.peek()) {
+                'h' => return self.try_keyword(TokenType::Then, @len("hen".*), "hen");
+                'r' => return self.try_keyword(TokenType::True, @len("rue".*), "rue");
+            }
+            'u' => switch (self.peek()) {
+                '8' => return self.try_keyword(TokenType::U8Type, @len("8".*), "8");
+                '1' => return self.try_keyword(TokenType::U16Type, @len("16".*), "16");
+                '3' => return self.try_keyword(TokenType::U32Type, @len("32".*), "32");
+                '6' => return self.try_keyword(TokenType::U8Type, @len("64".*), "64");
+                'n' => {
+                    self.advance();
+                    switch (self.peek()) {
+                        'd' => return self.try_keyword(TokenType::Undefined, @len("defined".*), "defined");
+                        'i' => return self.try_keyword(TokenType::Union, @len("ion".*), "ion");
+                    }
+                }
+                's' => return self.try_keyword(TokenType::Use, @len("se".*), "se");
+            }
+
+            'v' => switch (self.peek()) {
+                'a' => return self.try_keyword(TokenType::Var, @len("ar".*), "ar");
+                'o' => return self.try_keyword(TokenType::VoidType, @len("oid".*), "oid");
+            }
+            'w' => return self.try_keyword(TokenType::While, @len("hile".*), "hile");
+        }
+        return self.identifier();
+    }
+
+    fn try_keyword(self: *Lexer, tt: TokenType, len: u64, rem: *const u8) Token {
+        if (self.curr + len <= self.end
+            and (self.end == self.curr + len or !std::str::is_alphanumeric(self.curr[len]))
+            and std::mem::eql::[u8](len, self.curr, rem)) {
+            self.curr += (len as *u8);
+            return self.emit_token(tt);
+        }
+        return self.identifier();
+    }
+
+    fn identifier(self: *Lexer) Token {
+        while (!self.at_end() and std::str::is_alphanumeric(self.peek())) {
+            self.advance();
+        }
+
+        return self.emit_token(TokenType::Identifier);
+    }
+
+    fn native(self: *Lexer) Token {
+        const error = self.at_end() or !std::str::is_alpha(self.peek());
+
+        while (!self.at_end() and std::str::is_alphanumeric(self.peek())) {
+            self.advance();
+        }
+
+        if (error) {
+            return self.error("native must start with an alpha character");
+        }
+        return self.emit_token(TokenType::Native);
+    }
+
+    fn string(self: *Lexer) Token {
+        // 10 == '\n'
+        var curr = 0 as u8;
+        while ((self.peek() != '"' or curr == '\') and self.peek() != 10 and !self.at_end()) {
+            curr = self.advance();
+        }
+        // Consume closing '"'
+        if (self.at_end() or self.peek() == 10) {
+            return self.error("unclosed string literal");
+        } else {
+            self.advance();
+        }
+
+        return self.emit_token(TokenType::String);
+    }
+
+    fn char(self: *Lexer) Token {
+        if (self.at_end()) {
+            return self.error("unclosed char literal");
+        }
+        self.advance();
+        if (!self.match(''')) {
+            return self.error("unclosed char literal");
+        }
+        return self.emit_token(TokenType::Char);
+    }
+
+    fn number(self: *Lexer) Token {
+        self.match('_');
+
+        var tt = TokenType::Integer;
+        var error = self.parse_integer();
+
+        if (self.peek() == '.' and (std::str::is_numeric(self.peek_next()) or self.peek_next() == '_')) {
+            self.advance();
+
+            error |= self.parse_integer();
+
+            if (self.match('e')) {
+                self.match('+') or self.match('-');
+                if (!(std::str::is_numeric(self.peek()) or self.peek() == '_')) {
+                    return self.error("invalid floating point scientific notation");
+                }
+                error |= self.parse_integer();
+            }
+
+            tt = TokenType::Float;
+        } else if (self.match('e')) {
+            self.match('+') or self.match('-');
+            if (!(std::str::is_numeric(self.peek()) or self.peek() == '_')) {
+                return self.error("invalid floating point scientific notation");
+            }
+            error |= self.parse_integer();
+            tt = TokenType::Float;
+        }
+
+        if (error) {
+            return self.error("expected digit seperator to be between two digits");
+        }
+
+        return self.emit_token(tt);
+    }
+
+    fn parse_integer(self: *Lexer) bool {
+        var previous = self.previous();
+        var error = false;
+        while (std::str::is_numeric(self.peek()) or self.peek() == '_') {
+            error |= self.peek() == '_' and previous == '_';
+            previous = self.advance();
+        }
+        error |= previous == '_';
+
+        return error;
+    }
+
+    ///////////////////
+    /// Helper func ///
+    ///////////////////
+
+    fn error(self: *const Lexer, err: *const u8) Token {
+        var token: Token = undefined;
+        token.lexeme = Slice::[u8]::new(err, std::str::cstr_len(err));
+        token.type = TokenType::Error;
+        return token;
+    }
+
+    fn emit_token(self: *const Lexer, type: TokenType) Token {
+        var token: Token = undefined;
+        token.lexeme = Slice::[u8]::new(self.start, (self.curr - self.start) as u64);
+        token.type = type;
+        return token;
+    }
+
+    fn skip_whitespace(self: *Lexer) *const u8 {
+        while (!self.at_end()) {
+            switch (self.peek() as i64) {
+                9 | 10 | 13 | 32 => { // '\t', '\n', '\r', ' '
+                    self.advance();
+                    continue;
+                }
+                47 => { // '/'
+                    self.advance();
+                    if (self.match('/')) {
+                        while (!self.at_end() and !self.match(10 as u8)) {
+                            self.advance();
+                        }
+                    } else if (self.match('*')) {
+                        self.start = (self.curr - 1) as *const u8;
+                        var error = true;
+                        while (!self.at_end()) {
+                            if (self.peek() == '*' and self.peek_next() == '/') {
+                                error = false;
+                                self.advance();
+                                self.advance();
+                                break;
+                            }
+                            self.advance();
+                        }
+                        if (error) {
+                            return "unclosed block comment";
+                        }
+                    }
+                    continue;
+                }
+            }
+            break;
+        }
+        self.start = self.curr;
+        return nullptr;
+    }
+
+    fn at_end(self: *const Lexer) bool {
+        return self.curr == self.end;
+    }
+
+    fn previous(self: *const Lexer) u8 {
+        return self.curr[-1];
+    }
+
+    fn peek(self: *const Lexer) u8 {
+        return self.curr.*;
+    }
+
+    fn peek_next(self: *const Lexer) u8 {
+        if (self.curr + 1 != self.end) {
+            return self.curr[1];
+        }
+        return 0 as u8;
+    }
+
+    fn match(self: *Lexer, expected: u8) bool {
+        if (self.peek() == expected and !self.at_end()) {
+            self.advance();
+            return true;
+        }
+        return false;
+    }
+
+    fn advance(self: *Lexer) u8 {
+        const c = self.peek();
+        self.curr += 1 as *const u8;
+        return c;
+    }
+}
+
+pub struct Token {
+    lexeme: Slice[u8];
+    type: TokenType;
+}
+
+pub enum TokenType {
+    // Literals
+    Native,
+    Identifier,
+    String,
+    Integer,
+    Float,
+    Char,
+
+    // Other
+    Dot,
+    DotDot,
+    Comma,
+    Colon,
+    Scope, // ::
+    ScopeSquare, // ::[
+    Semicolon,
+    QuestionMark,
+    SmallArrow, // ->
+    BigArrow, // =>
+    LeftParen,
+    RightParen,
+    LeftSquare,
+    RightSquare,
+    LeftBrace,
+    RightBrace,
+
+    // Unary
+    Bang,
+    Tilde,
+
+    // Arith
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    ShiftLeft,
+    ShiftRight,
+    Ampersand,
+    Caret,
+    Pipe,
+
+    // Assign
+    Equal,
+    PlusEqual,
+    MinusEqual,
+    StarEqual,
+    SlashEqual,
+    PercentEqual,
+    ShiftLeftEqual,
+    ShiftRightEqual,
+    AmpersandEqual,
+    CaretEqual,
+    PipeEqual,
+
+    // Comparison
+    EqualEqual,
+    BangEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+
+
+
+    //// Types ////
+    // Signed Int
+    I8Type,
+    I16Type,
+    I32Type,
+    I64Type,
+    // Unsigned int
+    U8Type,
+    U16Type,
+    U32Type,
+    U64Type,
+    // Floating point
+    F32Type,
+    F64Type,
+    // Other
+    BoolType,
+    VoidType,
+    ArrayType,
+
+    // Keywords
+    And,
+    As,
+    Break,
+    Compif,
+    Const,
+    Continue,
+    Defer,
+    Do,
+    Else,
+    Enum,
+    False,
+    Fn,
+    For,
+    If,
+    Loop,
+    Mod,
+    Nullptr,
+    Or,
+    Overload,
+    Pub,
+    Return,
+    Struct,
+    Super,
+    Switch,
+    Then,
+    True,
+    Undefined,
+    Union,
+    Use,
+    Var,
+    While,
+
+    Error,
+    Eof
+}

@@ -1,0 +1,37 @@
+pub struct Rc[T] {
+    ref: *RcItem[T];
+
+    pub fn new(item: T) Rc[T] {
+        var new_rc: Rc[T] = undefined;
+        new_rc.ref = @malloc(@sizeof(new_rc.ref)) as *RcItem[T];
+        new_rc.ref.item = item;
+        new_rc.ref.rc = 1 as u64;
+        return new_rc;
+    }
+
+    pub fn clone(self: *const Rc[T]) Rc[T] {
+        self.ref.rc += 1 as u64;
+        return self.*;
+    }
+
+    pub fn free(self: *const Rc[T]) void {
+        self.ref.rc -= 1 as u64;
+        if (self.ref.rc == 0) {
+            compif (self.ref.item.free()) self.ref.item.free();
+            @free(self.ref);
+        }
+    }
+
+    // overload .*(self: *const Rc[T]) *const T {
+
+    // }
+
+    // overload *(self: *const Rc[T], rhs: *const T) T {
+
+    // }
+}
+
+struct RcItem[T] {
+    item: T;
+    rc: u64;
+}

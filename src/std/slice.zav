@@ -1,0 +1,100 @@
+use super::option::Option;
+
+pub struct SplitIterator[T] {
+    curr: *const T;
+    remaining: u64;
+    delimiter: *const T;
+
+    pub fn next(self: *SplitIterator[T]) Option[Slice[T]] {
+        for (1..self.remaining + 1, self.curr) |i, item| {
+            if (item.* == self.delimiter.*) {
+                const ptr = self.curr;
+                self.curr = self.curr + @sizeof(self.curr.*) * i;
+                self.remaining -= i as u64;
+                return Option::[Slice[T]]::new_some(Slice::[T]::new(ptr, (i - 1) as u64));
+            }
+        }
+
+        if (self.curr != nullptr) {
+            const old_curr = self.curr;
+            const old_remaining = self.remaining;
+            self.curr = nullptr;
+            self.remaining = 0 as u64;
+            return Option::[Slice[T]]::new_some(Slice::[T]::new(old_curr, old_remaining));
+        }
+        return Option::[Slice[T]]::new_none();
+    } 
+}
+
+pub struct SliceSplitIterator[T] {
+    curr: *const T;
+    remaining: u64;
+    delimiter: Slice[T];
+
+    pub fn next(self: *SliceSplitIterator[T]) Option[Slice[T]] {
+        for (0..self.remaining, self.curr) |i, item| {
+            var match = true;
+            for (0..self.delimiter.len, self.delimiter.ptr) |i, d_item| {
+                if (d_item.* != item[i]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                const ptr = self.curr;
+                self.curr = self.curr + @sizeof(self.curr.*) * (i + self.delimiter.len);
+                self.remaining -= (i + self.delimiter.len) as u64;
+                return Option::[Slice[T]]::new_some(Slice::[T]::new(ptr, i as u64));
+            }
+        }
+
+        if (self.curr != nullptr) {
+            const old_curr = self.curr;
+            const old_remaining = self.remaining;
+            self.curr = nullptr;
+            self.remaining = 0 as u64;
+            return Option::[Slice[T]]::new_some(Slice::[T]::new(old_curr, old_remaining));
+        }
+        return Option::[Slice[T]]::new_none();
+    } 
+}
+
+
+pub struct Slice[T] {
+    ptr: *const T;
+    len: u64;
+
+    pub fn new(ptr: *const T, len: u64) Slice[T] {
+        var slice: Slice[T] = undefined;
+        slice.ptr = ptr;
+        slice.len = len;
+        return slice;
+    }
+
+    pub fn split(self: *const Slice[T], delimiter: *const T) SplitIterator[T] {
+        var iter: SplitIterator[T] = undefined;
+        iter.curr = self.ptr;
+        iter.remaining = self.len;
+        iter.delimiter = delimiter;
+        return iter;
+    }
+
+    pub fn split_slice(self: *const Slice[T], delimiter: Slice[T]) SliceSplitIterator[T] {
+        var iter: SliceSplitIterator[T] = undefined;
+        iter.curr = self.ptr;
+        iter.remaining = self.len;
+        iter.delimiter = delimiter;
+        return iter;
+    }
+
+    pub fn hash(self: *const Slice[T]) u32 {
+        var hash = 2166126261 as u32;
+
+        for (0..self.len * @sizeof(self.ptr.*), self.ptr as *const u8) |_, char| {
+            hash ^= char.*;
+            hash *= 1677619 as u32;
+        }
+
+        return hash;
+    }
+}

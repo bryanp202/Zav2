@@ -1,0 +1,84 @@
+use super::IoError;
+use super::super::result::Result;
+use super::super::slice::Slice;
+use super::super::str::String;
+
+pub struct File {
+    _path: String;
+    _handle: i64;
+
+    pub fn open_file(path: *const u8) Result[File, IoError] {
+        var file: File = undefined;
+        file._handle = @fopen(path);
+        if (file._handle == -1) {
+            return Result::[File, IoError]::new_err(IoError::FailedToOpen);
+        }
+        file._path = String::from_cstr(path);
+        return Result::[File, IoError]::new_ok(file);
+    }
+
+    pub fn create_file(path: *const u8) Result[File, IoError] {
+        var file: File = undefined;
+        file._handle = @fcreate(path);
+        if (file._handle == -1) {
+            return Result::[File, IoError]::new_err(IoError::FailedToOpen);
+        }
+        file._path = String::from_cstr(path);
+        return Result::[File, IoError]::new_ok(file);
+    }
+
+    pub fn write(self: *const File, buf: *const u8, len: i64) Result[i64, i64] {
+        var bytes_written = 0;
+        const write_result = @fwrite(self._handle, buf, len as u64, &bytes_written);
+        if (!write_result) {
+            return Result::[i64, i64]::new_err(0);
+        }
+        if (bytes_written != len) {
+            return Result::[i64, i64]::new_err(bytes_written);
+        }
+        return Result::[i64, i64]::new_ok(bytes_written);
+    } 
+
+    pub fn close(self: *const File) bool {
+        self._path.free();
+        return @closeHandle(self._handle);
+    }
+
+    pub fn delete(self: *const File) bool {
+        return @fdelete(self._path.data);
+    }
+}
+
+pub fn delete_file(path: *const u8) bool {
+    return @fdelete(path);
+}
+
+/// Returns the byte contents of a file as an owned slice.
+/// The returned slice is not null terminated.
+pub fn read_file(path: *const u8) Result[Slice[u8], IoError] {
+    const file = @fopen(path);
+    if (file == -1) {
+        return Result::[Slice[u8], IoError]::new_err(IoError::FailedToOpen);
+    }
+    defer @closeHandle(file);
+
+    var file_len: u64 = 0 as u64;
+    const read_file_size_success  = @fgetSize(file, &file_len);
+    if (!read_file_size_success) {
+        return Result::[Slice[u8], IoError]::new_err(IoError::FileEmpty);
+    }
+
+    const file_buf = @malloc(file_len) as *u8;
+    if (file_buf == nullptr) {
+        return Result::[Slice[u8], IoError]::new_err(IoError::OutOfMemory);
+    }
+
+    var bytes_read: u64 = 0 as u64;
+    const read_success = @fread(file, file_buf, file_len, &bytes_read);
+    if (!read_success or bytes_read != file_len) {
+        @free(file_buf);
+        return Result::[Slice[u8], IoError]::new_err(IoError::FailedToRead);
+    }
+
+    return Result::[Slice[u8], IoError]::new_ok(Slice::[u8]::new(file_buf, bytes_read));
+}

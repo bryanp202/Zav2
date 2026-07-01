@@ -1,0 +1,1 @@
+zav .\src\main.zav -o ..\out\zav.exe %*

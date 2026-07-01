@@ -1,0 +1,45 @@
+pub mod std;
+pub mod args;
+pub mod lexer;
+
+use std::io::fs;
+use lexer::Lexer;
+use lexer::TokenType;
+
+use std::result::Result;
+
+pub fn main(argc: i64, argv: **const u8) i64 {
+    const start = @nanoTimestamp();
+    defer @printf("Time to run: %f s\n", (@nanoTimestamp() - start) / 1_000_000_000.0);
+
+    if (argc != 2) {
+        @printf("Usage: zav.exe <path/to/src/main.zav>\n");
+        return 1;
+    }
+    const src_path = argv[1];
+    
+    const file_result = fs::read_file(src_path);
+    if (file_result.is_err()) {
+        @printf("Could not open file at: \"%s\"\n", src_path);
+        return 1;
+    }
+
+    var lexer = Lexer::new(file_result.unwrap_ok());
+
+    @printf("Tokens:\n");
+    var token = lexer.next_token();
+    while (token.type != TokenType::Eof) {
+        switch (token.type) {
+            TokenType::Identifier => @printf("%.*s: identifier\n", token.lexeme.len, token.lexeme.ptr);
+            TokenType::Error => {
+                const error_at = lexer.previous_literal();
+                @printf("'%.*s': %.*s\n", error_at.len, error_at.ptr, token.lexeme.len, token.lexeme.ptr);
+            }
+            else => @printf("%d: %.*s\n", token.type, token.lexeme.len, token.lexeme.ptr);
+        }
+        token = lexer.next_token();
+    }
+    @printf("TokenType::Eof\n");
+
+    return 0;
+}

@@ -1,0 +1,38 @@
+use super::slice::Slice;
+
+pub fn [T] cpy(src: *const T, dst: *T, len: u64) void {
+    for (0..len, dst) |i, item| {
+        item.* = src[i];
+    }
+}
+
+pub fn [T] zero(src: *T, len: u64) void {
+    for (0..len * @sizeof(src.*), src as *u8) |_, byte| {
+        byte.* = 0 as u8;
+    }
+}
+
+pub fn [T] swap(a: *T, b: *T) void {
+    const tmp = a.*;
+    a.* = b.*;
+    b.* = tmp;
+}
+
+pub fn [T] replace(dst: *T, new: T) T {
+    const tmp = dst.*;
+    dst.* = new;
+    return tmp;
+}
+
+pub fn [T] bytes(src: *const T) Slice[u8] {
+    return Slice::[u8]::new(src as *const u8, @sizeof(src.*));
+}
+
+pub fn [T] eql(len: u64, a: *const T, b: *const T) bool {
+    for (0..len, a) |i, item| {
+        if (item.* != b[i]) {
+            return false;
+        }
+    }
+    return true;
+}

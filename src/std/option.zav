@@ -1,0 +1,33 @@
+enum OptionStatus {
+    Some, None
+}
+
+pub struct Option[T] {
+    item: T;
+    status: OptionStatus;
+
+    pub fn new_some(item: T) Option[T] {
+        var option: Option[T] = undefined;
+        option.item = item;
+        option.status = OptionStatus::Some;
+        return option;
+    }
+
+    pub fn new_none() Option[T] {
+        var option: Option[T] = undefined;
+        option.status = OptionStatus::None;
+        return option;
+    }
+
+    pub fn is_some(self: *const Option[T]) bool {
+        return self.status == OptionStatus::Some;
+    }
+
+    pub fn is_none(self: *const Option[T]) bool {
+        return self.status == OptionStatus::None;
+    }
+
+    pub fn unwrap(self: *const Option[T]) T {
+        return self.item;
+    }
+}
