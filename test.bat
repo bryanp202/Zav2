@@ -1,2 +1,1 @@
-powershell.exe Set-ExecutionPolicy RemoteSigned –Scope Process
-powershell.exe ".\tests\tests.ps1"
+powershell.exe "Set-ExecutionPolicy RemoteSigned –Scope Process; .\tests\tests.ps1"
