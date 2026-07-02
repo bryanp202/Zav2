@@ -6,21 +6,22 @@ use std::io::fs;
 use lexer::Lexer;
 use lexer::TokenType;
 
-use std::result::Result;
-
 pub fn main(argc: i64, argv: **const u8) i64 {
-    const start = @nanoTimestamp();
-    defer @printf("Time to run: %f s\n", (@nanoTimestamp() - start) / 1_000_000_000.0);
+    const settings = args::ArgsParser::new(argc, argv)
+        .parse();
+    defer settings.debug();
 
-    if (argc != 2) {
-        @printf("Usage: zav.exe <path/to/src/main.zav>\n");
+    if (settings.display_help) {
+        args::display_help();
         return 1;
     }
-    const src_path = argv[1];
+
+    const start = @nanoTimestamp();
+    defer @printf("Time to run: %f s\n", (@nanoTimestamp() - start) / 1_000_000_000.0);
     
-    const file_result = fs::read_file(src_path);
+    const file_result = fs::read_file(settings.root_path.ptr);
     if (file_result.is_err()) {
-        @printf("Could not open file at: \"%s\"\n", src_path);
+        @printf("Could not open file at: \"%s\"\n", settings.root_path.ptr);
         return 1;
     }
 

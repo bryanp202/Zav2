@@ -169,6 +169,16 @@ pub fn cstr_len(cstr: *const u8) u64 {
     return i;
 }
 
+pub fn cstr_eql(lhs: *const u8, rhs: *const u8) bool {
+    var i = 0;
+    while (lhs[i] == rhs[i]) {
+        if (lhs[i] == 0) {
+            return true;
+        }
+        i += 1;
+    }
+}
+
 pub fn cpy_nstr(n: u64, src: *const u8, buf: *u8) void {
     for (0..n, src) |i, char| {
         buf[i] = char.*;

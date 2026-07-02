@@ -1,0 +1,154 @@
+use ::std::slice::Slice;
+use ::std::str;
+use ::std::option::Option;
+
+pub fn display_help() void {
+    @printf("Usage: Zav [options] <source_file>\n");
+    @printf("\n");
+    @printf("Options:\n");
+    @printf("  -s, --emit-asm          Emit assembly files for each module\n");
+    @printf("  -d, --show-ast          Display Abstract Syntax Tree (AST) during compilation\n");
+    @printf("  -o <file>               Specify output file name (default is 'out.exe')\n");
+    @printf("  -h, --help              Display this help message\n");
+    @printf("\n");
+    @printf("Example:\n");
+    @printf("  Zav -s -o splicer.exe ./src/main.zav    # Output assembly and specify output file 'splicer.exe'\n");
+    @printf("  Zav -d splicer.zav                      # Display the AST for each module and compile to default 'out.exe'\n");
+    @printf("\n");
+}
+
+pub struct CompileSettings {
+    call_path: Slice[u8];
+    root_path: Slice[u8];
+    output_path: Slice[u8];
+    until_stage: Stage;
+    display_help: bool;
+
+    pub fn debug(self: *const CompileSettings) void {
+        @printf("-----------------------------------------\n");
+        @printf("CompileSettings:\n");
+        @printf("call_path: %.*s\n", self.call_path.len, self.call_path.ptr);
+        @printf("root_path: %.*s\n", self.root_path.len, self.root_path.ptr);
+        @printf("output_path: %.*s\n", self.output_path.len, self.output_path.ptr);
+        @printf("until_stage: %d\n", self.until_stage);
+        @printf("display_help: %d\n", self.display_help);
+        @printf("-----------------------------------------\n");
+    }
+}
+
+pub enum Stage {
+    None,
+    Lexing,
+    Parsing,
+    Semantic,
+    Assembling,
+    Linking
+}
+
+pub struct ArgsParser {
+    args: Slice[*const u8];
+
+    pub fn new(argc: i64, argv: *const *const u8) ArgsParser {
+        var self: ArgsParser = undefined;
+        self.args = Slice::[*const u8]::new(argv, argc as u64);
+        return self;
+    }
+
+    pub fn parse(self: *ArgsParser) CompileSettings {
+        var settings: CompileSettings = undefined;
+        settings.call_path = Slice::[u8]::new(self.args.ptr[0], str::cstr_len(self.args.ptr[0]));
+        settings.root_path = Slice::[u8]::new(nullptr, 0 as u64);
+        settings.output_path = Slice::[u8]::new(nullptr, 0 as u64);
+        settings.until_stage = Stage::None;
+        settings.display_help = false;
+
+        var i = 1;
+        while (i < self.args.len) {
+            const arg = self.args.ptr[i];
+            switch (arg[0]) {
+                '-' => {
+                    if (arg[1] == '-') {
+                        i += parse_long_arg(&settings, &self.args, i);
+                    } else {
+                        i += parse_short_arg(&settings, &self.args, i);
+                    }
+                }
+                else => i += parse_root_path_arg(&settings, &self.args, i);
+            }
+        }
+        
+        if (settings.until_stage == Stage::None) {
+            settings.until_stage = Stage::Linking;
+        }
+
+        // Check if it settings in valid state
+        if (settings.root_path.ptr == nullptr) {
+            settings.display_help = true;
+        }
+
+        return settings;
+    }
+}
+
+fn parse_root_path_arg(settings: *CompileSettings, args: *const Slice[*const u8], i: i64) i64 {
+    if (settings.root_path.ptr == nullptr) {
+        const root_path = args.ptr[i];
+        settings.root_path = Slice::[u8]::new(root_path, str::cstr_len(root_path));
+        return 1;
+    }
+
+    settings.display_help = true;
+    return 1;
+}
+
+// arg that starts with "--"
+fn parse_long_arg(settings: *CompileSettings, args: *const Slice[*const u8], i: i64) i64 {
+    const arg = args.ptr[i];
+    switch (arg[2]) {
+        's' => {
+            const match = "stage=";
+            if (str::nstr_eql(@len(match.*), match, &arg[2])) {
+                const stage = parse_stage(&arg[2 + @len(match.*)]);
+                if (stage.is_some() and settings.until_stage == Stage::None) {
+                    settings.until_stage = stage.unwrap();
+                    return 1;
+                }
+            }
+        }
+    }
+
+    settings.display_help = true;
+    return 1;
+}
+
+// arg that starts with '-'
+fn parse_short_arg(settings: *CompileSettings, args: *const Slice[*const u8], i: i64) i64 {
+    const arg = args.ptr[i];
+    switch (arg[1]) {
+        'o' => {
+            if (i + 1 < args.len and settings.output_path.ptr == nullptr) {
+                const output_path = args.ptr[i + 1];
+                settings.output_path = Slice::[u8]::new(output_path, str::cstr_len(output_path));
+                return 2;
+            }
+        }
+    }
+
+    settings.display_help = true;
+    return 1;
+}
+
+fn parse_stage(arg: *const u8) Option[Stage] {
+    switch (arg[0]) {
+        'l' => switch (arg[1]) {
+            'e' => if (str::cstr_eql(arg, "lexing")) return Option::[Stage]::new_some(Stage::Lexing);
+            'i' => if (str::cstr_eql(arg, "linking")) return Option::[Stage]::new_some(Stage::Linking);
+        }
+        'p' => if (str::cstr_eql(arg, "parsing")) return Option::[Stage]::new_some(Stage::Parsing);
+        's' => if (str::cstr_eql(arg, "semantic")) return Option::[Stage]::new_some(Stage::Semantic);
+        'a' => if (str::cstr_eql(arg, "assembling")) return Option::[Stage]::new_some(Stage::Assembling);
+        
+    }
+
+    return Option::[Stage]::new_none();
+}
