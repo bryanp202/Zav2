@@ -2,6 +2,7 @@ use super::result::Result;
 use super::str;
 use super::io;
 use super::fft;
+use super::mem;
 use io::fs;
 use io::IoError;
 use io::fs::File;
@@ -118,10 +119,10 @@ pub struct WaveFile {
         }
 
         var header: HeaderFields = undefined;
-        str::cpy_nstr(4 as u64, "RIFF", &header.chunk_id);
+        mem::cpy::[u8](4 as u64, &header.chunk_id, "RIFF");
         header.file_length = 44 as u32 + sample_size_in_bytes * total_samples - 8 as u32;
-        str::cpy_nstr(4 as u64, "WAVE", &header.file_type);
-        str::cpy_nstr(4 as u64, "fmt ", &header.format_chunk);
+        mem::cpy::[u8](4 as u64, &header.file_type, "WAVE");
+        mem::cpy::[u8](4 as u64, &header.format_chunk, "fmt ");
         header.format_length = 16 as u16;
         header.audio_format = 1 as u16;
         header.num_channels = self.num_channels;
@@ -129,7 +130,7 @@ pub struct WaveFile {
         header.bytes_per_second = self.sample_rate * sample_size_in_bytes * self.num_channels;
         header.bytes_per_block = sample_size_in_bytes * self.num_channels;
         header.sample_size = self.sample_size;
-        str::cpy_nstr(4 as u64, "data", &header.data_chunk);
+        mem::cpy::[u8](4 as u64, &header.data_chunk, "data");
         header.data_length = self.num_channels * self.sample_count * sample_size_in_bytes;
 
         // Write header, size of 44 bytes

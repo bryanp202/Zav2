@@ -1,4 +1,5 @@
 use super::option::Option;
+use super::mem;
 
 pub struct SplitIterator[T] {
     curr: *const T;
@@ -97,4 +98,17 @@ pub struct Slice[T] {
 
         return hash;
     }
+
+    // pub fn debug(self: *const Slice[T], name: *const u8) void {
+    //     @printf("-------------------------------\n");
+    //     @printf("%s:\n", name);
+    //     for (0..self.len, self.ptr) |_, item| {
+    //         const bytes = mem::bytes::[T](item);
+    //         for (0..bytes.len, bytes.ptr) |_, b| {
+    //             @printf("%d, ", b.*);
+    //         }
+    //         @printf("\n");
+    //     }
+    //     @printf("-------------------------------\n");
+    // }
 }

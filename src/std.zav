@@ -1,11 +1,13 @@
 pub mod collections;
 pub mod fft;
+pub mod hash;
 pub mod image;
 pub mod io;
 // pub mod json;
 pub mod math;
 pub mod mem;
 pub mod option;
+pub mod path;
 pub mod rc;
 pub mod result;
 pub mod slice;

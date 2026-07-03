@@ -1,6 +1,6 @@
 use super::slice::Slice;
 
-pub fn [T] cpy(src: *const T, dst: *T, len: u64) void {
+pub fn [T] cpy(len: u64, dst: *T, src: *const T) void {
     for (0..len, dst) |i, item| {
         item.* = src[i];
     }

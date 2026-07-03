@@ -19,6 +19,14 @@ pub struct Option[T] {
         return option;
     }
 
+    pub fn free(self: *const Option[T]) void {
+        compif (self.item.free()) {
+            if (self.is_some()) {
+                self.item.free();
+            }
+        }
+    }
+
     pub fn is_some(self: *const Option[T]) bool {
         return self.status == OptionStatus::Some;
     }
@@ -29,5 +37,9 @@ pub struct Option[T] {
 
     pub fn unwrap(self: *const Option[T]) T {
         return self.item;
+    }
+
+    pub fn unwrap_ref(self: *const Option[T]) *const T {
+        return &self.item;
     }
 }

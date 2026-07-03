@@ -1,0 +1,33 @@
+use super::str::String;
+use super::slice::Slice;
+
+// Owns the data it holds
+pub struct PathBuf {
+    data: String;
+
+    pub fn new() PathBuf {
+        var self: PathBuf = undefined;
+        self.data = String::new();
+        return self;
+    }
+
+    pub fn from_slice(path: Slice[u8]) PathBuf {
+        var self: PathBuf = undefined;
+        self.data = String::from_slice(path);
+        return self;
+    }
+
+    pub fn from_cstr(path: *const u8) PathBuf {
+        var self: PathBuf = undefined;
+        self.data = String::from_cstr(path);
+        return self;
+    }
+
+    pub fn as_slice(self: *const PathBuf) Slice[u8] {
+        return self.data.as_slice();
+    }
+
+    pub fn copy(self: *const PathBuf) PathBuf {
+        return PathBuf::from_slice(self.as_slice());
+    }
+}

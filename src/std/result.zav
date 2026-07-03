@@ -41,6 +41,14 @@ pub struct Result[O, E] {
         return self.item.err;
     }
 
+    pub fn unwrap_ok_ref(self: *const Result[O, E]) *const O {
+        return &self.item.ok;
+    }
+
+    pub fn unwrap_err_ref(self: *const Result[O, E]) *const E {
+        return &self.item.err;
+    }
+
     pub fn unwrap_or(self: *const Result[O, E], or_item: O) O {
         return self.is_ok() ? self.item.ok : or_item;
     }

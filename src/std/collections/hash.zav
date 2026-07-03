@@ -1,0 +1,43 @@
+use super::super::option::Option;
+
+/// HashMap owns all values given to it
+pub struct HashMap[K, V] {
+    items: *Option[Entry[K, V]];
+    capacity: u64;
+    len: u64;
+    max_density: f64;
+
+    pub fn new() HashMap[K, V] {
+        var self: HashMap[K, V] = undefined;
+        self.items = nullptr;
+        self.capacity = 0 as u64;
+        self.len = 0 as u64;
+        self.max_density = 0.75;
+        return self;
+    }
+
+    pub fn free(self: *const HashMap[K, V]) void {
+        for (0..self.len, self.items) |_, entry| {
+            entry.free();
+        }
+        @free(self.items);
+    }
+
+    pub fn entry(self: *HashMap[K, V], key: *const K) *Entry[K, V] {
+        
+    }
+}
+
+pub struct Entry[K, V] {
+    key: K;
+    val: V;
+
+    pub fn free(self: *const Entry[K, V]) void {
+        compif (self.key.free()) {
+            self.key.free();
+        }
+        compif (self.val.free()) {
+            self.val.free();
+        }
+    }
+}

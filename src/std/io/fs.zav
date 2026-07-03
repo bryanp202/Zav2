@@ -45,7 +45,7 @@ pub struct File {
     }
 
     pub fn delete(self: *const File) bool {
-        return @fdelete(self._path.data);
+        return @fdelete(self._path.chars);
     }
 }
 
