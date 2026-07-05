@@ -43,7 +43,7 @@ pub struct SliceSplitIterator[T] {
             var match = true;
             for (0..self.delimiter.len, self.delimiter.ptr) |i, d_item| {
                 compif (d_item.eql(d_item): bool) {
-                    if (d_item.equal(&item[i])) continue;
+                    if (d_item.eql(&item[i])) continue;
                 } else {
                     if (d_item.* == item[i]) continue;
                 }
