@@ -30,8 +30,14 @@ pub fn [T] bytes(src: *const T) Slice[u8] {
 
 pub fn [T] eql(len: u64, a: *const T, b: *const T) bool {
     for (0..len, a) |i, item| {
-        if (item.* != b[i]) {
-            return false;
+        compif (item.eql(item): bool) {
+            if (!item.eql(&b[i])) {
+                return false;
+            }
+        } else {
+            if (item.* != b[i]) {
+                return false;
+            }
         }
     }
     return true;

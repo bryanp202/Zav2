@@ -1,5 +1,21 @@
-pub fn siphash(ni: *void, inlen: u64, key0: u64, key1: u64) u64 {
-    var ni = ni as *const u8;
+pub struct SipHasher {
+    key0: u64;
+    key1: u64;
+
+    pub fn new(key0: u64, key1: u64) SipHasher {
+        var self: SipHasher = undefined;
+        self.key0 = key0;
+        self.key1 = key1;
+        return self;
+    }
+
+    pub fn hash(self: *const SipHasher, data: *const u8, len: u64) u64 {
+        return siphash(data, len, self.key0, self.key1);
+    }
+}
+
+pub fn siphash(ni: *const u8, inlen: u64, key0: u64, key1: u64) u64 {
+    var ni = ni;
     var v: [4]u64 = undefined;
     v[0] = 8317987319222330741 as u64;
     v[1] = 7237128888997146477 as u64;

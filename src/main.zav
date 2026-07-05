@@ -4,11 +4,38 @@ pub mod lexer;
 
 use std::io::fs;
 use std::collections::hash::HashMap;
+use std::hash::SipHasher;
+use std::slice;
+use std::slice::Slice;
 use std::str::String;
 use lexer::Lexer;
 use lexer::TokenType;
 
 pub fn main(argc: i64, argv: **const u8) i64 {
+    const arr: [2]i64 = undefined;
+
+    var map: HashMap[Slice[u8], i64, SipHasher] = HashMap::[Slice[u8], i64, SipHasher]::new(SipHasher::new(1 as u64, 2 as u64));
+
+    for (1..argc, &argv[1]) |_, arg| {
+        const arg_slice = slice::from_cstr(arg.*);
+        const existing_entry = map.get_entry_ptr(arg_slice);
+        if (existing_entry.is_some()) {
+            existing_entry.unwrap().val += 1;
+        } else {
+            map.insert(arg_slice, 1);
+        }
+    }
+    map.debug();
+
+    var iter = map.iter();
+    var item = iter.next();
+    @printf("-----------------------------\n");
+    while (item.is_some()) {
+        const entry = item.unwrap();
+        @printf("- %.*s: %d\n", entry.key.len, entry.key.ptr, entry.val);
+    } loop item = iter.next();
+    @printf("-----------------------------\n");
+
     const start = @nanoTimestamp();
     defer @printf("Time to run: %f s\n", (@nanoTimestamp() - start) / 1_000_000_000.0);
     

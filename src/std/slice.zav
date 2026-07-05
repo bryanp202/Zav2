@@ -1,5 +1,7 @@
 use super::option::Option;
 use super::mem;
+use super::hash;
+use super::str;
 
 pub struct SplitIterator[T] {
     curr: *const T;
@@ -88,27 +90,35 @@ pub struct Slice[T] {
         return iter;
     }
 
-    pub fn hash(self: *const Slice[T]) u32 {
-        var hash = 2166126261 as u32;
-
-        for (0..self.len * @sizeof(self.ptr.*), self.ptr as *const u8) |_, char| {
-            hash ^= char.*;
-            hash *= 1677619 as u32;
+    pub fn eql(self: *const Slice[T], other: *const Slice[T]) bool {
+        if (self.len != other.len) {
+            return false;
+        }
+        if (self.ptr == other.ptr) {
+            return true;
         }
 
-        return hash;
+        return mem::eql::[T](self.len, self.ptr, other.ptr);
     }
 
-    // pub fn debug(self: *const Slice[T], name: *const u8) void {
-    //     @printf("-------------------------------\n");
-    //     @printf("%s:\n", name);
-    //     for (0..self.len, self.ptr) |_, item| {
-    //         const bytes = mem::bytes::[T](item);
-    //         for (0..bytes.len, bytes.ptr) |_, b| {
-    //             @printf("%d, ", b.*);
-    //         }
-    //         @printf("\n");
-    //     }
-    //     @printf("-------------------------------\n");
+    pub fn [H] hash(self: *const Slice[T], hasher: *const H) u64 {
+        return hasher.hash(self.ptr as *const u8, self.len);
+    }
+
+    //  pub fn debug(self: *const Slice[T]) void {
+    //      @printf("-------------------------------\n");
+    //      @printf("Slice: len: %d, ptr: %d\n", self.len, self.ptr);
+    //      for (0..self.len, self.ptr) |_, item| {
+    //          const bytes = mem::bytes::[T](item);
+    //          for (0..bytes.len, bytes.ptr) |_, b| {
+    //              @printf("%d, ", b.*);
+    //          }
+    //          @printf("\n");
+    //      }
+    //      @printf("-------------------------------\n");
     // }
+}
+
+pub fn from_cstr(cstr: *const u8) Slice[u8] {
+    return Slice::[u8]::new(cstr, str::cstr_len(cstr));
 }

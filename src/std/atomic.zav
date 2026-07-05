@@ -1,0 +1,54 @@
+struct AtomicI64 {
+    _inner: i64;
+
+    pub fn new(num: i64) AtomicI64 {
+        var self: AtomicI64 = undefined;
+        self._inner = num;
+        return self; 
+    }
+
+    pub fn get(self: *const AtomicI64) i64 {
+        return self._inner;
+    }
+
+    pub fn set(self: *AtomicI64, num: i64) void {
+        self._inner = num;
+    }
+
+    pub fn fetch_add(self: *AtomicI64, num: i64) void {
+        @xaddi64(&self._inner, num);
+    }
+
+    pub fn cmp_exchange(self: *AtomicI64, expected: i64, new: i64) bool {
+        const temp = @cmpxchgi64(&self._inner, expected, new);
+        return temp == expected;
+    }
+
+    pub fn fetch_op(self: *AtomicI64, op: fn(i64)i64) void {
+        var curr = self._inner;
+        while (!self.cmp_exchange(curr, op(curr))) {
+            curr = self._inner;
+        }
+    }
+}
+
+struct AtomicF64 {
+    _inner: AtomicI64;
+
+    pub fn new(num: f64) AtomicF64 {
+        var self: AtomicF64 = undefined;
+        self._inner._inner = num as void as i64;
+        return self;
+    }
+
+    pub fn fetch_op(self: *AtomicF64, op: fn(f64)f64) void {
+        var curr = self._inner._inner;
+        while (!self._inner.cmp_exchange(curr, op(curr as void as f64) as void as i64)) {
+            curr = self._inner._inner;
+        }
+    }
+
+    pub fn get(self: *const AtomicF64) f64 {
+        return self._inner._inner as void as f64;
+    }
+}

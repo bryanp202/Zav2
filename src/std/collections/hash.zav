@@ -1,36 +1,179 @@
 use super::super::option::Option;
 
 /// HashMap owns all values given to it
-pub struct HashMap[K, V] {
-    items: *Option[Entry[K, V]];
+pub struct HashMap[K, V, H] {
+    items: *Entry[K, V];
     capacity: u64;
     len: u64;
     max_density: f64;
+    hasher: H;
 
-    pub fn new() HashMap[K, V] {
-        var self: HashMap[K, V] = undefined;
+    pub fn new(hasher: H) HashMap[K, V, H] {
+        var self: HashMap[K, V, H] = undefined;
         self.items = nullptr;
         self.capacity = 0 as u64;
         self.len = 0 as u64;
+        self.hasher = hasher;
         self.max_density = 0.75;
+        
         return self;
     }
 
-    pub fn free(self: *const HashMap[K, V]) void {
+    pub fn free(self: *const HashMap[K, V, H]) void {
         for (0..self.len, self.items) |_, entry| {
             entry.free();
         }
         @free(self.items);
     }
 
-    pub fn entry(self: *HashMap[K, V], key: *const K) *Entry[K, V] {
-        
+    pub fn iter(self: *const HashMap[K, V, H]) EntryIter[K, V] {
+        return EntryIter::[K, V]::new(self.capacity, self.items);
+    }
+
+    pub fn insert(self: *HashMap[K, V, H], k: K, v: V) bool {
+        if (self.capacity == 0 or (self.len + 1.0) / self.capacity > self.max_density) {
+            self.resize();
+        }
+
+        const ptr = self.make_entry(&k);
+        const replacing = ptr.type == EntryType::Some;
+        ptr.type = EntryType::Some;
+        ptr.key = k;
+        ptr.val = v;
+
+        self.len += 1 as u64;
+
+        return replacing;
+    }
+
+    pub fn get(self: *const HashMap[K, V, H], k: K) Option[V] {
+        const entry = self.find_entry(&k);
+
+        if (entry.is_some()) {
+            return Option::[V]::new_some(entry.unwrap().val); 
+        }
+        return Option::[V]::new_none();
+    }
+
+    pub fn get_ptr(self: *HashMap[K, V, H], k: K) Option[*V] {
+        const entry = self.find_entry(&k);
+
+        if (entry.is_some()) {
+            return Option::[*V]::new_some(&entry.unwrap().val); 
+        }
+        return Option::[*V]::new_none();
+    }
+
+    pub fn get_entry_ptr(self: *HashMap[K, V, H], k: K) Option[*Entry[K, V]] {
+        return self.find_entry(&k);
+    }
+
+   /***********/
+   /* Helpers */
+   /***********/
+    fn resize(self: *HashMap[K, V, H]) void {
+        const old_capacity = self.capacity;
+        const old_items = self.items;
+        self.capacity = old_capacity != 0 ? self.capacity * 2 as u64 : 8 as u64;
+        self.items = @calloc(@sizeof(old_items.*), self.capacity) as *Entry[K,V];
+
+        var rem = self.len;
+        self.len = 0 as u64;
+        for (0..old_capacity, old_items) |_, old_entry| {
+            if (old_entry.type == EntryType::Some) {
+                self.insert(old_entry.key, old_entry.val);
+                rem -= 1 as u64;
+                if (rem == 0) {
+                    break;
+                }
+            }
+        }
+
+        @free(old_items);
+    }
+
+    fn hash_key(self: *const HashMap[K, V, H], k: *const K) u64 {
+        compif (K::hash::[H](k, &self.hasher) : u64) {
+            return K::hash::[H](k, &self.hasher);
+        } else {
+            return self.hasher.hash(k as *const u8, @sizeof(k.*));
+        }
+    }
+
+    fn make_entry(self: *const HashMap[K, V, H], k: *const K) *Entry[K, V] {
+        const k_hash = self.hash_key(k);
+        var i = k_hash % self.capacity;
+
+        while (self.items[i].type == EntryType::Some) {
+            if (self.items[i].hash == k_hash) {
+                compif (self.items[i].key.eql(&self.items[i].key): bool) {
+                    if (k.eql(&self.items[i].key)) return &self.items[i];
+                } else {
+                    if(k == self.items[i].key) return &self.items[i];
+                }
+            }
+        } loop i = (i + 1 as u64) % self.capacity;
+
+        const ptr = &self.items[i];
+        ptr.hash = k_hash;
+
+        return ptr;
+    }
+
+    fn find_entry(self: *const HashMap[K, V, H], k: *const K) Option[*Entry[K, V]] {
+        if (self.capacity == 0) {
+            return Option::[*Entry[K, V]]::new_none();
+        }
+
+        const k_hash = self.hash_key(k);
+        var i = k_hash % self.capacity;
+
+        while (self.items[i].type != EntryType::None) {
+            if (self.items[i].type == EntryType::Grave) {
+                continue;
+            }
+
+            if (self.items[i].hash == k_hash) {
+                compif (self.items[i].key.eql(&self.items[i].key): bool) {
+                    if (k.eql(&self.items[i].key)) {
+                        return Option::[*Entry[K, V]]::new_some(&self.items[i]);
+                    }
+                } else {
+                    if(k == self.items[i].key) {
+                        return Option::[*Entry[K, V]]::new_some(&self.items[i]);
+                    }
+                }
+            }
+        } loop i = (i + 1 as u64) % self.capacity;
+
+        return Option::[*Entry[K, V]]::new_none();
+    }
+
+    pub fn debug(self: *const HashMap[K, V, H]) void {
+        @printf("-------------------------------\n");
+        @printf("HashMap: len: %d, capacity: %d\n", self.len, self.capacity);
+        for (0..self.capacity, self.items) |_, entry| {
+            switch (entry.type) {
+                EntryType::Some => @printf("- Some: %llu\n", entry.hash);
+                EntryType::Grave => @printf("- Grave\n");
+                EntryType::None => @printf("- None\n");
+            }
+        }
+        @printf("-------------------------------\n");
     }
 }
 
+enum EntryType {
+    None,
+    Grave,
+    Some
+}
+
 pub struct Entry[K, V] {
+    hash: u64;
     key: K;
     val: V;
+    type: EntryType;
 
     pub fn free(self: *const Entry[K, V]) void {
         compif (self.key.free()) {
@@ -39,5 +182,31 @@ pub struct Entry[K, V] {
         compif (self.val.free()) {
             self.val.free();
         }
+    }
+}
+
+pub struct EntryIter[K, V] {
+    entries: *const Entry[K, V];
+    len: u64;
+    curr: u64;
+
+    pub fn new(capacity: u64, entries: *const Entry[K, V]) EntryIter[K, V] {
+        var self: EntryIter[K, V] = undefined;
+        self.len = capacity;
+        self.entries = entries;
+        self.curr = 0 as u64;
+        return self;
+    }
+
+    pub fn next(self: *EntryIter[K, V]) Option[*const Entry[K, V]] {
+        while (self.curr < self.len) {
+            const entry = &self.entries[self.curr];
+            if (entry.type == EntryType::Some) {
+                self.curr += 1 as u64;
+                return Option::[*const Entry[K, V]]::new_some(entry);
+            }
+        } loop self.curr += 1 as u64;
+
+        return Option::[*const Entry[K, V]]::new_none();
     }
 }
