@@ -42,10 +42,13 @@ pub struct SliceSplitIterator[T] {
         for (0..self.remaining, self.curr) |i, item| {
             var match = true;
             for (0..self.delimiter.len, self.delimiter.ptr) |i, d_item| {
-                if (d_item.* != item[i]) {
-                    match = false;
-                    break;
+                compif (d_item.eql(d_item): bool) {
+                    if (d_item.equal(&item[i])) continue;
+                } else {
+                    if (d_item.* == item[i]) continue;
                 }
+                match = false;
+                break;
             }
             if (match) {
                 const ptr = self.curr;
