@@ -12,30 +12,6 @@ use lexer::Lexer;
 use lexer::TokenType;
 
 pub fn main(argc: i64, argv: **const u8) i64 {
-    const arr: [2]i64 = undefined;
-
-    var map: HashMap[Slice[u8], i64, SipHasher] = HashMap::[Slice[u8], i64, SipHasher]::new(SipHasher::new(1 as u64, 2 as u64));
-
-    for (1..argc, &argv[1]) |_, arg| {
-        const arg_slice = slice::from_cstr(arg.*);
-        const existing_entry = map.get_entry_ptr(arg_slice);
-        if (existing_entry.is_some()) {
-            existing_entry.unwrap().val += 1;
-        } else {
-            map.insert(arg_slice, 1);
-        }
-    }
-    map.debug();
-
-    var iter = map.iter();
-    var item = iter.next();
-    @printf("-----------------------------\n");
-    while (item.is_some()) {
-        const entry = item.unwrap();
-        @printf("- %.*s: %d\n", entry.key.len, entry.key.ptr, entry.val);
-    } loop item = iter.next();
-    @printf("-----------------------------\n");
-
     const start = @nanoTimestamp();
     defer @printf("Time to run: %f s\n", (@nanoTimestamp() - start) / 1_000_000_000.0);
     
@@ -53,20 +29,20 @@ pub fn main(argc: i64, argv: **const u8) i64 {
         @printf("Could not open file at: \"%s\"\n", settings.root_path.ptr);
         return 1;
     }
-
+    
     var lexer = Lexer::new(file_result.unwrap_ok());
 
     @printf("Tokens:\n");
     var token = lexer.next_token();
     while (token.type != TokenType::Eof) {
         switch (token.type) {
-            TokenType::Identifier => @printf("%.*s: identifier\n", token.lexeme.len, token.lexeme.ptr);
+            //TokenType::Identifier => @printf("%.*s: identifier\n", token.lexeme.len, token.lexeme.ptr);
             TokenType::Error => {
                 const error_at = lexer.previous_literal();
                 @printf("'%.*s': %.*s\n", error_at.len, error_at.ptr, token.lexeme.len, token.lexeme.ptr);
                 return 1;
             }
-            else => @printf("%d: %.*s\n", token.type, token.lexeme.len, token.lexeme.ptr);
+            //else => @printf("%d: %.*s\n", token.type, token.lexeme.len, token.lexeme.ptr);
         }
         token = lexer.next_token();
     }

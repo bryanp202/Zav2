@@ -6,16 +6,20 @@ use super::str;
 pub struct SplitIterator[T] {
     curr: *const T;
     remaining: u64;
-    delimiter: *const T;
+    delimiter: T;
 
     pub fn next(self: *SplitIterator[T]) Option[Slice[T]] {
         for (1..self.remaining + 1, self.curr) |i, item| {
-            if (item.* == self.delimiter.*) {
-                const ptr = self.curr;
-                self.curr = self.curr + @sizeof(self.curr.*) * i;
-                self.remaining -= i as u64;
-                return Option::[Slice[T]]::new_some(Slice::[T]::new(ptr, (i - 1) as u64));
+            compif (item.eql(item): bool) {
+                if (!item.equal(&self.delimiter)) continue;
+            } else {
+                if (item.* != self.delimiter) continue;
             }
+
+            const ptr = self.curr;
+            self.curr = self.curr + @sizeof(self.curr.*) * i;
+            self.remaining -= i as u64;
+            return Option::[Slice[T]]::new_some(Slice::[T]::new(ptr, (i - 1) as u64));
         }
 
         if (self.curr != nullptr) {
@@ -74,7 +78,7 @@ pub struct Slice[T] {
         return slice;
     }
 
-    pub fn split(self: *const Slice[T], delimiter: *const T) SplitIterator[T] {
+    pub fn split(self: *const Slice[T], delimiter: T) SplitIterator[T] {
         var iter: SplitIterator[T] = undefined;
         iter.curr = self.ptr;
         iter.remaining = self.len;
