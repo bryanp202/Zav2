@@ -11,7 +11,7 @@ pub struct SplitIterator[T] {
     pub fn next(self: *SplitIterator[T]) Option[Slice[T]] {
         for (1..self.remaining + 1, self.curr) |i, item| {
             compif (item.eql(item): bool) {
-                if (!item.equal(&self.delimiter)) continue;
+                if (!item.eql(&self.delimiter)) continue;
             } else {
                 if (item.* != self.delimiter) continue;
             }
@@ -105,11 +105,18 @@ pub struct Slice[T] {
             return true;
         }
 
-        return mem::eql::[T](self.len, self.ptr, other.ptr);
+        for (0..self.len, self.ptr) |i, item| {
+            compif (item.eql(item): bool) {
+                if (!item.eql(&other.ptr[i])) return false;
+            } else {
+                if (item.* != other.ptr[i]) return false;
+            }
+        }
+        return true;
     }
 
     pub fn [H] hash(self: *const Slice[T], hasher: *const H) u64 {
-        return hasher.hash(self.ptr as *const u8, self.len);
+        return hasher.hash_one(self.ptr as *const u8, self.len);
     }
 
     //  pub fn debug(self: *const Slice[T]) void {
