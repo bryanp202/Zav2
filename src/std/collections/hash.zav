@@ -94,7 +94,8 @@ pub struct HashMap[K, V, H] {
 
     fn hash_key(self: *const HashMap[K, V, H], k: *const K) u64 {
         compif (K::hash::[H](k, &self.hasher) : u64) {
-            return K::hash::[H](k, &self.hasher);
+            var hasher = self.hasher;
+            return K::hash::[H](k, &hasher);
         } else {
             return self.hasher.hash(k as *const u8, @sizeof(k.*));
         }

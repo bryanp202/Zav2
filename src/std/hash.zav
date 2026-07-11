@@ -1,15 +1,94 @@
+//! Hasher interface:
+//! fn hash_one(self: *const Self, data: *const u8, len: u64) u64; // Hash a sequence of bytes and give the hash (hasher const)
+//! fn update_state(self: *Self, data: *const u8, len: u64) void; // Update the hasher with various non-continuous memory chunks (hasher updates) 
+//! fn finish(self: *Self) u64; // Finish a hash made with update_state (hasher is not reset)
+
 pub struct SipHasher {
     key0: u64;
     key1: u64;
+    v: [4]u64;
+    total_len: u64;
+    rem: u64;
+    rem_len: u64;
 
     pub fn new(key0: u64, key1: u64) SipHasher {
         var self: SipHasher = undefined;
         self.key0 = key0;
         self.key1 = key1;
+        self.v[0] = 8317987319222330741 as u64 ^ key0;
+        self.v[1] = 7237128888997146477 as u64 ^ key1;
+        self.v[2] = 7816392313619706465 as u64 ^ key0;
+        self.v[3] = 8387220255154660723 as u64 ^ key1;
+        self.total_len = 0 as u64;
+        self.rem = 0 as u64;
+        self.rem_len = 0 as u64;
         return self;
     }
 
-    pub fn hash(self: *const SipHasher, data: *const u8, len: u64) u64 {
+    pub fn update_state(self: *SipHasher, data: *const u8, len: u64) void {
+        self.total_len += len;
+        if (self.rem_len + len < 8 as u64) {
+            for (self.rem_len..self.rem_len + len) |i| {
+                self.rem |= data[i - self.rem_len] << (i * 8) as u64;
+            }
+            self.rem_len += len;
+            return; 
+        }
+
+        for (self.rem_len..8) |i| {
+            self.rem |= data[i - self.rem_len] << (i * 8) as u64;
+        }
+        self.v[3] ^= self.rem;
+        siphash_round(&self.v);
+        siphash_round(&self.v);
+        self.v[0] ^= self.rem;
+        self.rem = 0 as u64;
+        
+        const new_len = len + self.rem_len - 8 as u64;
+        var ni = (data + 8 - self.rem_len) as *const u8;
+        var left = new_len & 7;
+        self.rem_len = left;
+        const end = (data + len - left) as *const u8;
+
+        while (ni != end) {
+            const m: u64 = ni[0] | ni[1] << 8
+                | ni[2] << 16 | ni[3] << 24
+                | ni[4] << 32 | ni[5] << 40
+                | ni[6] << 48 | ni[7] << 56;
+            self.v[3] ^= m;
+
+            siphash_round(&self.v);
+            siphash_round(&self.v);
+
+            self.v[0] ^= m;
+        } loop ni = (ni + 8) as *const u8;
+
+        while (left > 0) {
+            left -= 1 as u64;
+            self.rem |= ni[left] << left * 8 as u8;
+        }
+    }
+
+    pub fn finish(self: *SipHasher) u64 {
+        const b = self.total_len << 56 | self.rem;
+
+        self.v[3] ^= b;
+
+        siphash_round(&self.v);
+        siphash_round(&self.v);
+
+        self.v[0] ^= b;
+        self.v[2] ^= 255 as u64;
+
+        siphash_round(&self.v);
+        siphash_round(&self.v);
+        siphash_round(&self.v);
+        siphash_round(&self.v);
+
+        return self.v[0] ^ self.v[1] ^ self.v[2] ^ self.v[3];
+    }
+
+    pub fn hash_one(self: *const SipHasher, data: *const u8, len: u64) u64 {
         return siphash(data, len, self.key0, self.key1);
     }
 }
@@ -17,39 +96,24 @@ pub struct SipHasher {
 pub fn siphash(ni: *const u8, inlen: u64, key0: u64, key1: u64) u64 {
     var ni = ni;
     var v: [4]u64 = undefined;
-    v[0] = 8317987319222330741 as u64;
-    v[1] = 7237128888997146477 as u64;
-    v[2] = 7816392313619706465 as u64;
-    v[3] = 8387220255154660723 as u64;
+    v[0] = 8317987319222330741 as u64 ^ key0;
+    v[1] = 7237128888997146477 as u64 ^ key1;
+    v[2] = 7816392313619706465 as u64 ^ key0;
+    v[3] = 8387220255154660723 as u64 ^ key1;
 
     var left = inlen & 7;
     const end = (ni + inlen - left) as *const u8;
     var b = inlen << 56;
-    v[3] ^= key1;
-    v[2] ^= key0;
-    v[1] ^= key1;
-    v[0] ^= key0;
 
     while (ni != end) {
-        const m = ni.*;
+        const m: u64 = ni[0] | ni[1] << 8
+            | ni[2] << 16 | ni[3] << 24
+            | ni[4] << 32 | ni[5] << 40
+            | ni[6] << 48 | ni[7] << 56;
         v[3] ^= m;
 
-        for (0..2) |_| {
-            v[0] += v[1];
-            v[1] = v[1] << 13 | v[1] >> 51;
-            v[1] ^= v[0];
-            v[0] = v[0] << 32 | v[0] >> 32;
-            v[2] += v[3];
-            v[3] = v[3] << 16 | v[3] >> 48;
-            v[3] ^= v[2];
-            v[0] += v[3];
-            v[3] = v[3] << 21 | v[3] >> 43;
-            v[3] ^= v[0];
-            v[2] += v[1];
-            v[1] = v[2] << 17 | v[2] >> 47;
-            v[1] ^= v[2];
-            v[2] = v[2] << 32 | v[2] >> 32;
-        }
+        siphash_round(&v);
+        siphash_round(&v);
 
         v[0] ^= m;
     } loop ni = (ni + 8) as *const u8;
@@ -61,42 +125,33 @@ pub fn siphash(ni: *const u8, inlen: u64, key0: u64, key1: u64) u64 {
 
     v[3] ^= b;
 
-    for (0..2) |_| {
-        v[0] += v[1];
-        v[1] = v[1] << 13 | v[1] >> 51;
-        v[1] ^= v[0];
-        v[0] = v[0] << 32 | v[0] >> 32;
-        v[2] += v[3];
-        v[3] = v[3] << 16 | v[3] >> 48;
-        v[3] ^= v[2];
-        v[0] += v[3];
-        v[3] = v[3] << 21 | v[3] >> 43;
-        v[3] ^= v[0];
-        v[2] += v[1];
-        v[1] = v[2] << 17 | v[2] >> 47;
-        v[1] ^= v[2];
-        v[2] = v[2] << 32 | v[2] >> 32;
-    }
+    siphash_round(&v);
+    siphash_round(&v);  
 
     v[0] ^= b;
     v[2] ^= 255 as u64;
 
-    for (0..4) |_| {
-        v[0] += v[1];
-        v[1] = v[1] << 13 | v[1] >> 51;
-        v[1] ^= v[0];
-        v[0] = v[0] << 32 | v[0] >> 32;
-        v[2] += v[3];
-        v[3] = v[3] << 16 | v[3] >> 48;
-        v[3] ^= v[2];
-        v[0] += v[3];
-        v[3] = v[3] << 21 | v[3] >> 43;
-        v[3] ^= v[0];
-        v[2] += v[1];
-        v[1] = v[2] << 17 | v[2] >> 47;
-        v[1] ^= v[2];
-        v[2] = v[2] << 32 | v[2] >> 32;
-    }
+    siphash_round(&v);
+    siphash_round(&v);
+    siphash_round(&v);
+    siphash_round(&v);
 
     return v[0] ^ v[1] ^ v[2] ^ v[3];
+}
+
+fn siphash_round(v: *[4]u64) void {
+    v[0] += v[1];
+    v[1] = v[1] << 13 | v[1] >> 51;
+    v[1] ^= v[0];
+    v[0] = v[0] << 32 | v[0] >> 32;
+    v[2] += v[3];
+    v[3] = v[3] << 16 | v[3] >> 48;
+    v[3] ^= v[2];
+    v[0] += v[3];
+    v[3] = v[3] << 21 | v[3] >> 43;
+    v[3] ^= v[0];
+    v[2] += v[1];
+    v[1] = v[2] << 17 | v[2] >> 47;
+    v[1] ^= v[2];
+    v[2] = v[2] << 32 | v[2] >> 32;
 }
