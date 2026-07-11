@@ -1,3 +1,17 @@
+pub fn [T] max(a: T, b: T) T {
+    if (a >= b) {
+        return a;
+    }
+    return b;
+}
+
+pub fn [T] min(a: T, b: T) T {
+    if (a <= b) {
+        return a;
+    }
+    return b;
+}
+
 pub struct Complex[T] {
     real: T;
     imag: T;
