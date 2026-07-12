@@ -1,0 +1,87 @@
+pub mod atomic;
+
+use super::result::Result;
+use atomic::AtomicU64;
+
+pub enum Error {
+    FailedToLock
+}
+
+pub struct Mutex[T] {
+    _handle: i64;
+    _inner: T;
+
+    pub fn new(item: T) Mutex[T] {
+        var self: Mutex[T] = undefined;
+        self._inner = item;
+        self._handle = @createMutex(nullptr);
+        return self;
+    }
+
+    pub fn free(self: *const Mutex[T]) void {
+        if (self._handle != 0) {
+            @closeHandle(self._handle);
+        }
+        compif (self._inner.free(): void) {
+            self._inner.free();
+        }
+    }
+
+    pub fn lock(self: *const Mutex[T]) Result[MutexLock[T], Error] {
+        if (self._handle == 0 or @waitOne(self._handle) != 0) {
+            return Result::[MutexLock[T], Error]::new_err(Error::FailedToLock);
+        }
+        return Result::[MutexLock[T], Error]::new_ok(
+            MutexLock::[T]::new(self)
+        );
+    }
+}
+
+pub struct MutexLock[T] {
+    item: *T;
+    _handle: i64;
+
+    pub fn new(mutex: *const Mutex[T]) MutexLock[T] {
+        var self: MutexLock[T] = undefined;
+        self.item = &mutex._inner as *T;
+        self._handle = mutex._handle;
+        return self;
+    }
+
+    pub fn free(self: *const MutexLock[T]) bool {
+        return @releaseMutex(self._handle) != 0;
+    }
+}
+
+pub struct Arc[T] {
+    _inner: *ArcInternal[T];
+
+    pub fn new(item: T) Arc[T] {
+        var self: Arc[T] = undefined;
+        self._inner = @malloc(@sizeof(self._inner.*)) as *ArcInternal[T];
+        self._inner.item = item;
+        self._inner.count = AtomicU64::new(1 as u64);
+        return self;
+    }
+
+    pub fn clone(self: *const Arc[T]) Arc[T] {
+        self._inner.count.fetch_add(1 as u64);
+        return self.*;
+    }
+
+    pub fn free(self: *const Arc[T]) void {
+        self._inner.count.fetch_add(-1 as u64);
+        if (self._inner.count.get() == 0 as u64) {
+            @free(self._inner);
+        }
+    }
+
+    pub fn get(self: *const Arc[T]) *T {
+        return &self._inner.item;
+    }
+}
+
+struct ArcInternal[T] {
+    item: T;
+    count: AtomicU64;
+}
