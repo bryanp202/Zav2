@@ -1,4 +1,3 @@
-pub mod atomic;
 pub mod collections;
 pub mod fft;
 pub mod hash;
@@ -13,4 +12,6 @@ pub mod rc;
 pub mod result;
 pub mod slice;
 pub mod str;
+pub mod sync;
+pub mod thread;
 pub mod wave;
