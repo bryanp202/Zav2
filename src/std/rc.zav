@@ -1,37 +1,34 @@
 pub struct Rc[T] {
-    ref: *RcItem[T];
+    _inner: *RcInternal[T];
 
     pub fn new(item: T) Rc[T] {
-        var new_rc: Rc[T] = undefined;
-        new_rc.ref = @malloc(@sizeof(new_rc.ref)) as *RcItem[T];
-        new_rc.ref.item = item;
-        new_rc.ref.rc = 1 as u64;
-        return new_rc;
+        var self: Rc[T] = undefined;
+        self._inner = @malloc(@sizeof(self._inner.*)) as *RcInternal[T];
+        self._inner.item = item;
+        self._inner.count = 1 as u64;
+        return self;
     }
 
     pub fn clone(self: *const Rc[T]) Rc[T] {
-        self.ref.rc += 1 as u64;
+        self._inner.count += 1 as u64;
         return self.*;
     }
 
     pub fn free(self: *const Rc[T]) void {
-        self.ref.rc -= 1 as u64;
-        if (self.ref.rc == 0) {
-            compif (self.ref.item.free()) self.ref.item.free();
-            @free(self.ref);
+        self._inner.count -= 1 as u64;
+        @printf("%d\n", self._inner.count);
+        if (self._inner.count == 0 as u64) {
+            @free(self._inner);
+            @printf("Freed\n");
         }
     }
 
-    // overload .*(self: *const Rc[T]) *const T {
-
-    // }
-
-    // overload *(self: *const Rc[T], rhs: *const T) T {
-
-    // }
+    pub fn get(self: *const Rc[T]) *T {
+        return &self._inner.item;
+    }
 }
 
-struct RcItem[T] {
+struct RcInternal[T] {
     item: T;
-    rc: u64;
+    count: u64;
 }
