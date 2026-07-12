@@ -78,10 +78,10 @@ pub struct HashMap[K, V, H] {
         self.items = @calloc(@sizeof(old_items.*), self.capacity) as *Entry[K,V];
 
         var rem = self.len;
-        self.len = 0 as u64;
         for (0..old_capacity, old_items) |_, old_entry| {
             if (old_entry.type == EntryType::Some) {
-                self.insert(old_entry.key, old_entry.val);
+                const entry = self.make_entry_with_hash(&old_entry.key, old_entry.hash);
+                entry.* = old_entry.*;
                 rem -= 1 as u64;
                 if (rem == 0) {
                     break;
@@ -102,7 +102,10 @@ pub struct HashMap[K, V, H] {
     }
 
     fn make_entry(self: *const HashMap[K, V, H], k: *const K) *Entry[K, V] {
-        const k_hash = self.hash_key(k);
+        return self.make_entry_with_hash(k, self.hash_key(k));
+    }
+
+    fn make_entry_with_hash(self: *const HashMap[K, V, H], k: *const K, k_hash: u64) *Entry[K, V] {
         var i = k_hash % self.capacity;
 
         while (self.items[i].type == EntryType::Some) {
