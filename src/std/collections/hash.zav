@@ -19,6 +19,17 @@ pub struct HashMap[K, V, H] {
         return self;
     }
 
+    pub fn with_capacity(hasher: H, capacity: u64) HashMap[K, V, H] {
+        var self: HashMap[K, V, H] = undefined;
+        self.items = @malloc(@sizeof(self.items.*) * capacity) as *Entry[K, V];
+        self.len = 0 as u64;
+        self.capacity = capacity;
+        self.hasher = hasher;
+        self.max_density = 0.75;
+    
+        return self;
+    }
+
     pub fn free(self: *const HashMap[K, V, H]) void {
         for (0..self.len, self.items) |_, entry| {
             entry.free();
@@ -93,7 +104,7 @@ pub struct HashMap[K, V, H] {
     }
 
     fn hash_key(self: *const HashMap[K, V, H], k: *const K) u64 {
-        compif (K::hash::[H](k, &self.hasher) : u64) {
+        compif (K::hash::[H]) {
             var hasher = self.hasher;
             return K::hash::[H](k, &hasher);
         } else {
@@ -110,7 +121,7 @@ pub struct HashMap[K, V, H] {
 
         while (self.items[i].type == EntryType::Some) {
             if (self.items[i].hash == k_hash) {
-                compif (self.items[i].key.eql(&self.items[i].key): bool) {
+                compif (K::eql) {
                     if (k.eql(&self.items[i].key)) return &self.items[i];
                 } else {
                     if(k == self.items[i].key) return &self.items[i];
@@ -138,7 +149,7 @@ pub struct HashMap[K, V, H] {
             }
 
             if (self.items[i].hash == k_hash) {
-                compif (self.items[i].key.eql(&self.items[i].key): bool) {
+                compif (K::eql) {
                     if (k.eql(&self.items[i].key)) {
                         return Option::[*Entry[K, V]]::new_some(&self.items[i]);
                     }
@@ -180,10 +191,10 @@ pub struct Entry[K, V] {
     type: EntryType;
 
     pub fn free(self: *const Entry[K, V]) void {
-        compif (self.key.free()) {
+        compif (K::free) {
             self.key.free();
         }
-        compif (self.val.free()) {
+        compif (V::free) {
             self.val.free();
         }
     }

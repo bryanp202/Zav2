@@ -1,38 +1,29 @@
+use super::super::slice::Slice;
+use super::super::option::Option;
+
 pub struct List[T] {
     items: *T;
     len: u64;
     capacity: u64;
 
     pub fn new() List[T] {
-        var new_list: List[T] = undefined;
-        new_list.items = nullptr;
-        new_list.len = 0 as u64;
-        new_list.capacity = 0 as u64;
-        return new_list;
-    }
-
-    pub fn with_capacity(capacity: u64) List[T] {
-        var new_list: List[T] = undefined;
-        new_list.items = @malloc(@sizeof(new_list.items.*) * capacity) as *T;
-        new_list.len = 0 as u64;
-        new_list.capacity = capacity;
-        return new_list;
-    }
-
-    pub fn init(self: *List[T]) void {
+        var self: List[T] = undefined;
         self.items = nullptr;
         self.len = 0 as u64;
         self.capacity = 0 as u64;
+        return self;
     }
 
-    pub fn init_with_capacity(self: *List[T], capacity: u64) void {
+    pub fn with_capacity(capacity: u64) List[T] {
+        var self: List[T] = undefined;
         self.items = @malloc(@sizeof(self.items.*) * capacity) as *T;
         self.len = 0 as u64;
         self.capacity = capacity;
+        return self;
     }
 
     pub fn free(self: *const List[T]) void {
-        compif (self.items[0].free()) {
+        compif (T::free) {
             for (0..self.len, self.items) |_, item| {
                 item.free();
             }
@@ -42,11 +33,13 @@ pub struct List[T] {
 
     pub fn clear(self: *List[T]) void {
         self.free();
-        self.init();
+        self.items = nullptr;
+        self.len = 0 as u64;
+        self.capacity = 0 as u64;
     }
 
     pub fn clear_retain_capacity(self: *List[T]) void {
-        compif (self.items[0].free()) {
+        compif (T::free) {
             for (0..self.len, self.items) |_, item| {
                 item.free();
             }
@@ -62,21 +55,25 @@ pub struct List[T] {
         self.len += 1 as u64;
     }
 
-    pub fn npush(self: *List[T], items: *const T, n: u64) void {
-        while (self.len + n > self.capacity) {
+    pub fn push_slice(self: *List[T], slice: Slice[T]) void {
+        while (self.len + slice.len > self.capacity) {
             self.resize();
         }
-        for (self.len..self.len+n, items) |i, item| {
+        for (self.len..self.len+slice.len, slice.ptr) |i, item| {
             self.items[i] = item.*;
         }
-        self.len += n;
+        self.len += slice.len;
     }
 
-    pub fn pop(self: *List[T]) T {
+    pub fn pop(self: *List[T]) Option[T] {
+        if (self.len == 0 as u64) {
+            return Option::[T]::new_none();
+        }
         self.len -= 1 as u64;
-        return self.items[self.len];
+        return Option::[T]::new_some(self.items[self.len]);
     }
 
+    /// Invalid to call on out of bounds index
     pub fn insert(self: *List[T], index: u64, item: T) void {
         if (self.len >= self.capacity) {
             self.resize_with_gap(index);
@@ -91,6 +88,7 @@ pub struct List[T] {
         self.len += 1 as u64;
     }
 
+    /// Invalid to call on out of bounds index
     pub fn remove(self: *List[T], index: u64) T {
         const item = self.items[index];
         for (0.. self.len-index, &self.items[index]) |_, item| {
@@ -98,12 +96,6 @@ pub struct List[T] {
         }
         self.len -= 1 as u64;
         return item;
-    }
-
-    pub fn replace_at(self: *List[T], index: u64, item: T) T {
-        const removed_item = self.items[index];
-        self.items[index] = item;
-        return removed_item;
     }
 
     /* Private Helpers */

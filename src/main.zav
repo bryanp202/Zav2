@@ -1,6 +1,8 @@
 pub mod std;
 pub mod args;
+//pub mod error;
 pub mod lexer;
+//pub mod parser;
 
 use std::io::fs;
 use std::collections::hash::HashMap;
@@ -11,9 +13,61 @@ use std::str::String;
 use lexer::Lexer;
 use lexer::TokenType;
 
+use std::thread::ThreadArgs;
+use std::thread::Thread;
+use std::sync::MutexLock;
+use std::sync::Mutex;
+use std::sync::CondVar;
+
+var mutex = std::sync::Mutex::[bool]::new(true);
+var cond_var: CondVar = undefined;
+var count = 0;
+
+pub fn worker(args: ThreadArgs[i64, bool]) i64 {
+    const in = args.in().*;
+    defer args.free();
+    
+    {
+        var lock = CondVar::wait_while::[bool](&cond_var, mutex.lock(), |ready: *bool| -> bool !ready.*);
+        defer lock.free();
+        count += 1;
+        lock.item.* = false;
+    }
+    cond_var.notify_all();
+
+    args.out().* = true;
+    return 0;
+}
+
 pub fn main(argc: i64, argv: **const u8) i64 {
-    const start = @nanoTimestamp();
-    defer @printf("Time to run: %f s\n", (@nanoTimestamp() - start) / 1_000_000_000.0);
+    cond_var.init();
+    var list = std::collections::list::List::[Thread[i64, bool]]::new();
+
+    for (0..10000) |i| {
+        list.push(Thread::[i64, bool]::new(worker, i).unwrap_ok());
+    }
+
+    for (0..10000) |i| {
+        {
+            var lock = CondVar::wait_while::[bool](&cond_var, mutex.lock(), |ready: *bool| -> bool ready.*);
+            lock.free();
+            lock.item.* = true;
+        }
+        cond_var.notify_one();
+    }
+    
+    for (0..list.len, list.items) |_, thread| {
+        if (!thread.join().unwrap_ok()) {
+            @printf("ERROR\n");
+        }
+    }
+    list.free();
+
+    var lock = mutex.lock();
+    lock.free();
+
+    const start = std::time::Instant::now();
+    defer @printf("Time to run: %f s\n", start.elapsed().as_secs_f64());
     
     const settings = args::ArgsParser::new(argc, argv)
         .parse();
@@ -36,13 +90,13 @@ pub fn main(argc: i64, argv: **const u8) i64 {
     var token = lexer.next_token();
     while (token.type != TokenType::Eof) {
         switch (token.type) {
-            //TokenType::Identifier => @printf("%.*s: identifier\n", token.lexeme.len, token.lexeme.ptr);
+            TokenType::Identifier => @printf("%.*s: identifier\n", token.lexeme.len, token.lexeme.ptr);
             TokenType::Error => {
                 const error_at = lexer.previous_literal();
                 @printf("'%.*s': %.*s\n", error_at.len, error_at.ptr, token.lexeme.len, token.lexeme.ptr);
                 return 1;
             }
-            //else => @printf("%d: %.*s\n", token.type, token.lexeme.len, token.lexeme.ptr);
+            else => @printf("%d: %.*s\n", token.type, token.lexeme.len, token.lexeme.ptr);
         }
         token = lexer.next_token();
     }

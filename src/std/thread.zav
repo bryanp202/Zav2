@@ -1,10 +1,15 @@
 use super::collections::list::List;
 use super::result::Result;
 use super::sync::Arc;
+use super::time::Duration;
 
 pub enum Error {
     FailedToSpawnThread,
     FailedToJoinThread
+}
+
+pub fn sleep(duration: Duration) void {
+    @sleep(duration.as_millis_u32());
 }
 
 pub struct ThreadPool[T, O] {
@@ -12,12 +17,10 @@ pub struct ThreadPool[T, O] {
     threads: List[Thread[O]];
 }
 
-
 /// Must call either free() or join() to clean up resources
 pub struct Thread[I, O] {
     _handle: i64;
     args: ThreadArgs[I, O];
-    closed: bool;
 
     pub fn new(work: fn(ThreadArgs[I, O])i64, in: I) Result[Thread[I, O], Error] {
         var self: Thread[I, O] = undefined;
@@ -44,8 +47,11 @@ pub struct Thread[I, O] {
             return Result::[O, Error]::new_err(Error::FailedToJoinThread);
         }
 
-        const out = self.args.out().*;
-        return Result::[O, Error]::new_ok(out);
+        return Result::[O, Error]::new_ok(self.args.out().*);
+    }
+
+    pub fn eql(self: *const Thread[I, O], other: *const Thread[I, O]) bool {
+        return self._handle == other._handle;
     }
 }
 

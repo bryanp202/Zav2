@@ -1,0 +1,76 @@
+use ::std::collections::list::List;
+use ::std::slice::Slice;
+
+use ::lexer::Lexer;
+use ::lexer::Token;
+use ::lexer::TokenType;
+
+pub struct Parser {
+    errors: List[ParsingError];
+    lexer: Lexer;
+    curr: Token;
+    prev: Token;
+
+    pub fn new() Parser {
+        var self: Parser = undefined;
+        self.errors = List::[ParsingError]::new();
+        self.curr = TokenType::Eof;
+        self.prev = TokenType::Eof;
+        return self;
+    }
+
+    pub fn parse(src: Slice[u8]) Result[Ast, List[ParsingError]] {
+        self.lexer = Lexer::new(src);
+        self.advance();
+        return self.parse_ast();
+    }
+
+    ///////////////////////
+    // Statement Parsing //
+    ///////////////////////
+
+    ////////////////////////
+    // Expression Parsing //
+    ////////////////////////
+
+    /////////////////////
+    // Private Helpers //
+    /////////////////////
+    fn at_end(self: *const Parser) bool {
+        return self.curr.type == TokenType::Eof;
+    }
+
+    fn check(self: *const Parser, tt: TokenType) bool {
+        return self.curr.type == tt;
+    }
+
+    fn advance_unchecked(self: *Parser) void {
+        self.prev = self.curr;
+        self.curr = self.lexer.next_token();
+    }
+
+    fn advance(self: *Parser) void {
+        self.advance_unchecked();
+        while (self.check(TokenType::Error)) {
+            self.errors.push(ParsingError::lexer(self.lexer.previous_literal()));
+            self.curr = self.lexer.next_token();
+        }
+    }
+
+    fn match(self: *Parser, tt: TokenType) bool {
+        if (self.check(tt)) {
+            self.advance_unchecked();
+            return true;
+        }
+        return false;
+    }
+
+    fn eat(self: *Parser, tt: TokenType, err: ParsingErrorType) bool {
+        if (self.curr.type == tt) {
+            self.advance_unchecked();
+            return true;
+        }
+        self.error(ParsingError::new(err));
+        return false;
+    }
+}

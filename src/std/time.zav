@@ -1,0 +1,100 @@
+use super::math::max;
+use super::math::min;
+
+pub struct Instant {
+    nano_timestamp: u64;
+
+    pub fn now() Instant {
+        var self: Instant = undefined;
+        self.nano_timestamp = @nanoTimestamp();
+        return self;
+    }
+
+    pub fn elapsed(self: *const Instant) Duration {
+        return Duration::from_nanos(@nanoTimestamp() - self.nano_timestamp);
+    }
+}
+
+pub struct Duration {
+    seconds: u64;
+    nanoseconds: u64;
+
+    fn new(seconds: u64, nanoseconds: u64) Duration {
+        var self: Duration = undefined;
+        self.seconds = seconds;
+        self.nanoseconds = nanoseconds;
+        return self;
+    }
+
+    pub fn infinity() Duration {
+        return Duration::new(18446744073709551615 as u64, 18446744073709551615 as u64);
+    }
+
+    pub fn from_secs(seconds: u64) Duration {
+        return Duration::new(
+            seconds,
+            0 as u64
+        );
+    }
+
+    pub fn from_millis(milliseconds: u64) Duration {
+        return Duration::new(
+            milliseconds / 1_000 as u64,
+            (milliseconds % 1000 as u64) * 1_000_000 as u64
+        );
+    }
+
+    pub fn from_micros(microseconds: u64) Duration {
+        return Duration::new(
+            microseconds / 1_000_000 as u64,
+            (microseconds % 1_000_000 as u64) * 1_000 as u64
+        );
+    }
+
+    pub fn from_nanos(nanoseconds: u64) Duration {
+        return Duration::new(
+            0 as u64,
+            nanoseconds
+        );
+    }
+
+    pub fn as_secs_f64(self: *const Duration) f64 {
+        return self.seconds + self.nanoseconds / 1_000_000_000.0;
+    }
+
+    pub fn as_secs_f32(self: *const Duration) f32 {
+        return self.seconds + self.nanoseconds / 1_000_000_000.0 as f32;
+    }
+
+    pub fn as_secs(self: *const Duration) u64 {
+        return self.seconds + self.nanoseconds / 1_000_000_000 as u64;
+    }
+
+    pub fn as_millis(self: *const Duration) u64 {
+        return self.seconds * 1_000 as u64 + self.nanoseconds / 1_000_000 as u64;
+    }
+
+    pub fn as_micros(self: *const Duration) u64 {
+        return self.seconds * 1_000_000 as u64 + self.nanoseconds / 1_000 as u64;
+    }
+
+    pub fn as_nanos(self: *const Duration) u64 {
+        return self.seconds * 1_000_000_000 as u64 + self.nanoseconds;
+    }
+
+    pub fn as_secs_u32(self: *const Duration) u32 {
+        return min::[u64](self.as_secs(), 4294967295 as u64) as u32;
+    }
+
+    pub fn as_millis_u32(self: *const Duration) u32 {
+        return min::[u64](self.as_millis(), 4294967295 as u64) as u32;
+    }
+
+    pub fn as_micros_u32(self: *const Duration) u32 {
+        return min::[u64](self.as_micros(), 4294967295 as u64) as u32;
+    }
+
+    pub fn as_nanos_u32(self: *const Duration) u32 {
+        return min::[u64](self.as_nanos(), 4294967295 as u64) as u32;
+    }
+}

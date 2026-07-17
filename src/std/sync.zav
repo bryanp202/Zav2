@@ -1,5 +1,6 @@
 pub mod atomic;
 
+use super::time::Duration;
 use super::result::Result;
 use atomic::AtomicU64;
 
@@ -7,21 +8,77 @@ pub enum Error {
     FailedToLock
 }
 
+pub struct TryWaitResult[T] {
+    guard: *T;
+    timed_out: bool;
+
+    pub fn get(self: *const TryWaitResult[T]) *MutexLock[T] {
+        return self.guard;
+    }
+
+    pub fn timed_out(self: *const TryWaitResult[T]) bool {
+        return self.timed_out;
+    }
+}
+
+pub struct CondVar {
+    _handle: i64;
+
+    pub fn new() CondVar {
+        var self: CondVar = undefined;
+        @createCondVar(&self._handle);
+        return self;
+    }
+
+    pub fn init(self: *CondVar) void {
+        @createCondVar(&self._handle);
+    }
+
+    // Waits while the condition is true
+    pub fn [T] wait_while(self: *CondVar, lock: MutexLock[T], cond: fn(*T)bool) MutexLock[T] {
+        var acquired_lock = lock;
+        while (cond(acquired_lock.item)) {
+            acquired_lock = CondVar::wait::[T](self, lock);
+        }
+        return acquired_lock;
+    }
+
+    pub fn [T] wait(self: *CondVar, lock: MutexLock[T]) MutexLock[T] {
+        @sleepCondVar(&self._handle, lock._lock_handle, Duration::infinity().as_millis_u32());
+        return lock;
+    }
+
+    pub fn [T] try_wait(self: *CondVar, lock: MutexLock[T], timeout: Duration) TryWaitResult[T] {
+        const timed_out = !@sleepCondVar(&self._handle, lock._lock_handle, timeout.as_millis_u32());
+
+        var result: TryWaitResult[T] = undefined;
+        result.guard = lock;
+        result.timed_out = timed_out;
+        return result;
+    }
+
+    pub fn notify_one(self: *CondVar) void {
+        @wakeCondVar(&self._handle);
+    }
+
+    pub fn notify_all(self: *CondVar) void {
+        @wakeAllCondVar(&self._handle);
+    }
+}
+
 pub struct Mutex[T] {
-    _other: i64;
     _handle: i64;
     _inner: T;
 
     pub fn new(item: T) Mutex[T] {
         var self: Mutex[T] = undefined;
-        self._other = 0;
         self._inner = item;
         @createMutex(&self._handle);
         return self;
     }
 
     pub fn free(self: *const Mutex[T]) void {
-        compif (self._inner.free(): void) {
+        compif (T::free) {
             self._inner.free();
         }
     }
@@ -29,25 +86,100 @@ pub struct Mutex[T] {
     /// Undefined behavior to move this Mutex[T] object before freeing the MutexLock
     pub fn lock(self: *Mutex[T]) MutexLock[T] {
         @mutexAcquireExclusive(&self._handle);
-        return MutexLock::[T]::new(self);
+        return MutexLock::[T]::new(&self._inner, &self._handle);
+    }
+}
+
+pub struct RwLock[T] {
+    _handle: i64;
+    _inner: T;
+
+    pub fn new(item: T) RwLock[T] {
+        var self: RwLock[T] = undefined;
+        self._inner = item;
+        @createRwLock(&self._handle);
+        return self;
+    }
+
+    pub fn free(self: *const RwLock[T]) void {
+        compif (T::free) {
+            self._inner.free();
+        }
+    }
+
+    /// Undefined behavior to move this RwLock[T] object before freeing the WriteLock[T]
+    pub fn write(self: *RwLock[T]) WriteLock[T] {
+        @mutexAcquireExclusive(&self._handle);
+        return WriteLock::[T]::new(&self._inner, &self._handle);
+    }
+
+    /// Undefined behavior to move this RwLock[T] object before freeing the ReadLock[T]
+    pub fn read(self: *RwLock[T]) ReadLock[T] {
+        @mutexAcquireShared(&self._handle);
+        return ReadLock::[T]::new(&self._inner, &self._handle);
     }
 }
 
 pub struct MutexLock[T] {
+    _lock_handle: *i64;
     item: *T;
-    _handle: *i64;
 
-    pub fn new(mutex: *Mutex[T]) MutexLock[T] { /// [Zav2:NONPUB]
+    pub fn new(item: *T, _handle: *i64) MutexLock[T] { /// [Zav2] NONPUB
         var self: MutexLock[T] = undefined;
-        self.item = &mutex._inner;
-        self._handle = &mutex._handle;
+        self.item = item;
+        self._lock_handle = _handle;
         return self;
     }
 
     pub fn free(self: *MutexLock[T]) void {
-        @mutexReleaseExclusive(self._handle);
+        @mutexReleaseExclusive(self._lock_handle);
+    }
+
+    pub fn get(self: *const MutexLock[T]) *T {
+        return self.item;
     }
 }
+
+pub struct WriteLock[T] {
+    _lock_handle: *i64;
+    item: *T;
+
+    pub fn new(item: *T, _handle: *i64) WriteLock[T] { /// [Zav2] NONPUB
+        var self: WriteLock[T] = undefined;
+        self.item = item;
+        self._lock_handle = _handle;
+        return self;
+    }
+
+    pub fn free(self: *WriteLock[T]) void {
+        @mutexReleaseShared(self._handle);
+    }
+
+    pub fn get(self: *const WriteLock[T]) *T {
+        return self.item;
+    }
+}
+
+pub struct ReadLock[T] {
+    _handle: *i64;
+    item: *T;
+
+    pub fn new(item: *T, _handle: *i64) ReadLock[T] { /// [Zav2] NONPUB
+        var self: ReadLock[T] = undefined;
+        self.item = item;
+        self._handle = _handle;
+        return self;
+    }
+
+    pub fn free(self: *ReadLock[T]) void {
+        @mutexReleaseExclusive(self._handle);
+    }
+
+    pub fn get(self: *const ReadLock[T]) *T {
+        return self.item;
+    }
+}
+
 
 pub struct Arc[T] {
     _inner: *ArcInternal[T];
