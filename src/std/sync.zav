@@ -1,4 +1,6 @@
 pub mod atomic;
+pub mod mpmc;
+pub mod mpsc;
 
 use super::time::Duration;
 use super::result::Result;
@@ -212,4 +214,46 @@ pub struct Arc[T] {
 struct ArcInternal[T] {
     item: T;
     count: AtomicU64;
+}
+
+pub struct Barrier {
+    mutex: Mutex[BarrierState];
+    cvar: CondVar;
+    num_threads: u64;
+
+    pub fn new(num_threads: u64) Barrier {
+        var state: BarrierState = undefined;
+        state.count = 0 as u64;
+        state.current_gen = 0 as u64;
+
+        var self: Barrier = undefined;
+        self.mutex = Mutex::[BarrierState]::new(state);
+        self.cvar = CondVar::new();
+        self.num_threads = num_threads;
+        return self;
+    }
+
+    pub fn wait(self: *Barrier) bool {
+        var lock = self.mutex.lock();
+        defer lock.free();
+
+        const gen = lock.item.current_gen;
+        lock.item.count += 1 as u64;
+        if (lock.item.count < self.num_threads) {
+            while (lock.item.current_gen == gen) {
+                lock = CondVar::wait::[BarrierState](&self.cvar, lock);
+            }
+            return false;
+        } else {
+            lock.item.current_gen += 1 as u64;
+            lock.item.count = 0 as u64;
+            self.cvar.notify_all();
+            return true;
+        }
+    }
+}
+
+struct BarrierState {
+    count: u64;
+    current_gen: u64;
 }
