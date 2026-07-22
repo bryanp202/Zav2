@@ -41,6 +41,7 @@ pub struct Thread[I, O] {
             return Result::[O, Error]::new_err(Error::FailedToJoinThread);
         }
 
+        @closeHandle(self._handle);
         return Result::[O, Error]::new_ok(self.args.out().*);
     }
 
