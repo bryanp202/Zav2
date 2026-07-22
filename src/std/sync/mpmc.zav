@@ -203,18 +203,16 @@ pub struct Sender[T] {
 
     pub fn send(self: *const Sender[T], msg: T) Result[void, T] {
         var lock = self._inner.get().inner.lock();
-        while (true) {
-            if (lock.item.receivers == 0 as u64) {
-                lock.free();
-                return Result::[void, T]::new_err(msg);
-            }
-            
-            lock.item.deque.push_back(msg);
+        if (lock.item.receivers == 0 as u64) {
             lock.free();
-
-            self._inner.get().empty_condvar.notify_one();
-            return Result::[void, T]::new_ok(nullptr as void);
+            return Result::[void, T]::new_err(msg);
         }
+        
+        lock.item.deque.push_back(msg);
+        lock.free();
+
+        self._inner.get().empty_condvar.notify_one();
+        return Result::[void, T]::new_ok(nullptr as void);
     }
 }
 
@@ -273,9 +271,10 @@ pub struct Receiver[T] {
         var lock = self._inner.get().inner.lock();
 
         if (lock.item.deque.len == 0 as u64) {
+            const senders = lock.item.senders;
             lock.free();
             return Result::[T, Error]::new_err(
-                lock.item.receivers == 0 as u64 ? Error::Disconnected : Error::Empty
+                senders == 0 as u64 ? Error::Disconnected : Error::Empty
             );
         }
 
