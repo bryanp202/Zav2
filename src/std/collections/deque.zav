@@ -1,6 +1,82 @@
 use super::super::slice::Slice;
 use super::super::option::Option;
+use super::super::result::Result;
 
+/// A wrapping buffer, fails on overflow
+pub struct RingBuf[T] {
+    items: *T;
+    len: u64;
+    capacity: u64;
+    front: u64;
+
+    pub fn new(capacity: u64) RingBuf[T] {
+        var self: RingBuf[T] = undefined;
+        self.len = 0 as u64;
+        self.front = 0 as u64;
+        self.capacity = capacity;
+        self.items = @malloc(@sizeof(self.items.*) * capacity) as *T;
+        return self;
+    }
+
+    pub fn free(self: *const Deque[T]) void {
+        compif (T::free) {
+            for (0..self.len) |i| {
+                self.items[self.to_buf_index(i)].free();
+            }
+        }
+        @free(self.items);
+    }
+
+    pub fn push_back(self: *RingBuf[T], item: T) Result[void, T] {
+        if (self.len == self.capacity) {
+            return Result::[void, T]::new_err(item);
+        }
+
+        self.items[self.to_buf_index(self.len)] = item;
+        self.len += 1 as u64;
+        return Result::[void, T]::new_ok(nullptr as void);
+    }
+
+    pub fn push_front(self: *RingBuf[T], item: T) Result[void, T] {
+        if (self.len == self.capacity) {
+            return Result::[void, T]::new_err(item);
+        }
+
+        self.front = self.to_buf_index(self.capacity - 1 as u64);
+        self.items[self.front] = item;
+        self.len += 1 as u64;
+        return Result::[void, T]::new_ok(nullptr as void);
+    }
+
+    pub fn pop_back(self: *RingBuf[T]) Option[T] {
+        if (self.len == 0 as u64) {
+            return Option::[T]::new_none();
+        }
+
+        self.len -= 1 as u64;
+        return Option::[T]::new_some(self.items[self.to_buf_index(self.len)]);
+    }
+
+    pub fn pop_front(self: *RingBuf[T]) Option[T] {
+        if (self.len == 0 as u64) {
+            return Option::[T]::new_none();
+        }
+
+        self.len -= 1 as u64;
+        const old_front = self.front;
+        self.front = self.to_buf_index(1 as u64);
+        return Option::[T]::new_some(self.items[old_front]);
+    }
+
+    ///////////////////////
+    /// Private helpers ///
+    ///////////////////////
+    fn to_buf_index(self: *RingBuf[T], index: u64) u64 {
+        return (self.front + index) % self.capacity;
+    }
+}
+
+/// A wrapping buffer, resizes on overflow
 pub struct Deque[T] {
     items: *T;
     len: u64;
@@ -9,24 +85,26 @@ pub struct Deque[T] {
 
     pub fn new() Deque[T] {
         var self: Deque[T] = undefined;
-        self.items = nullptr;
         self.len = 0 as u64;
+        self.front = 0 as u64;
         self.capacity = 0 as u64;
+        self.items = nullptr;
         return self;
     }
 
     pub fn with_capacity(capacity: u64) Deque[T] {
         var self: Deque[T] = undefined;
-        self.items = @malloc(@sizeof(self.items.*) * capacity) as *T;
         self.len = 0 as u64;
+        self.front = 0 as u64;
         self.capacity = capacity;
+        self.items = @malloc(@sizeof(self.items.*) * capacity) as *T;
         return self;
     }
 
     pub fn free(self: *const Deque[T]) void {
         compif (T::free) {
-            for (0..self.len, self.items) |_, item| {
-                item.free();
+            for (0..self.len) |i| {
+                self.items[self.to_buf_index(i)].free();
             }
         }
         @free(self.items);
@@ -34,41 +112,80 @@ pub struct Deque[T] {
 
     pub fn clear(self: *Deque[T]) void {
         self.free();
-        self.init();
+        self.front = 0 as u64;
+        self.capacity = 0 as u64;
+        self.len = 0 as u64;
+        self.items = nullptr;
     }
 
     pub fn clear_retain_capacity(self: *Deque[T]) void {
-        compif (self.items[0].free()) {
-            for (0..self.len, self.items) |_, item| {
-                item.free();
+        compif (T::free) {
+            for (0..self.len) |i| {
+                self.items[self.to_buf_index(i)].free();
             }
         }
+        self.front = 0 as u64;
         self.len = 0 as u64;
     }
 
-    pub fn push(self: *Deque[T], item: T) void {
-        if (self.len >= self.capacity) {
+    pub fn push_back(self: *Deque[T], item: T) void {
+        if (self.len == self.capacity) {
             self.resize();
         }
-        self.items[self.len] = item;
+
+        self.items[self.to_buf_index(self.len)] = item;
         self.len += 1 as u64;
     }
 
-    pub fn push_slice(self: *Deque[T], slice: Slice[T]) void {
-        while (self.len + slice.len > self.capacity) {
+    pub fn push_front(self: *Deque[T], item: T) void {
+        if (self.len == self.capacity) {
             self.resize();
         }
-        for (self.len..self.len+slice.len, slice.ptr) |i, item| {
-            self.items[i] = item.*;
-        }
-        self.len += n;
+
+        self.front = self.to_buf_index(self.capacity - 1 as u64);
+        self.items[self.front] = item;
+        self.len += 1 as u64;
     }
 
-    pub fn pop(self: *Deque[T]) Option[T] {
+    pub fn pop_back(self: *Deque[T]) Option[T] {
         if (self.len == 0 as u64) {
             return Option::[T]::new_none();
         }
+
         self.len -= 1 as u64;
-        return Option::[T]::new_some(self.items[self.len]);
+        return Option::[T]::new_some(self.items[self.to_buf_index(self.len)]);
+    }
+
+    pub fn pop_front(self: *Deque[T]) Option[T] {
+        if (self.len == 0 as u64) {
+            return Option::[T]::new_none();
+        }
+
+        self.len -= 1 as u64;
+        const old_front = self.front;
+        self.front = self.to_buf_index(1 as u64);
+        return Option::[T]::new_some(self.items[old_front]);
+    }
+
+    ///////////////////////
+    /// Private helpers ///
+    ///////////////////////
+    fn to_buf_index(self: *const Deque[T], index: u64) u64 {
+        return (self.front + index) % self.capacity;
+    }
+
+    fn resize(self: *Deque[T]) void {
+        // Stores new_capacity because Deque[T]::to_buf_index uses capacity
+        const new_capacity = self.capacity != 0 as u64 ? self.capacity * 2 as u64 : 8 as u64;
+        const new_items = @malloc(@sizeof(self.items.*) * new_capacity) as *T;
+
+        for (0..self.capacity, new_items) |i, new_item| {
+            new_item.* = self.items[self.to_buf_index(i as u64)];
+        }
+
+        @free(self.items);
+        self.items = new_items;
+        self.capacity = new_capacity;
+        self.front = 0 as u64;
     }
 }
