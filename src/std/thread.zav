@@ -24,7 +24,7 @@ pub struct Thread[I, O] {
 
         if (self._handle == 0) {
             thread_args.free();
-            self.free();
+            self.args.free();
             return Result::[Thread[I, O], Error]::new_err(Error::FailedToSpawnThread);
         }
 
