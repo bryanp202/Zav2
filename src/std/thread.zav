@@ -7,6 +7,10 @@ pub enum Error {
     FailedToJoinThread
 }
 
+pub fn osId() u64 {
+    return @currentThreadId();
+}
+
 pub fn sleep(duration: Duration) void {
     @sleep(duration.as_millis_u32());
 }
@@ -40,7 +44,6 @@ pub struct Thread[I, O] {
         if (@waitOne(self._handle) != 0) {
             return Result::[O, Error]::new_err(Error::FailedToJoinThread);
         }
-
         return Result::[O, Error]::new_ok(self.args.out().*);
     }
 
