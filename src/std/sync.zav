@@ -11,11 +11,15 @@ pub enum Error {
 }
 
 pub struct TryWaitResult[T] {
-    guard: *T;
+    lock: T;
     timed_out: bool;
 
+    pub fn free(self: *const TryWaitResult[T]) void {
+        self.lock.free();
+    }
+
     pub fn get(self: *const TryWaitResult[T]) *MutexLock[T] {
-        return self.guard;
+        return &self.lock;
     }
 
     pub fn timed_out(self: *const TryWaitResult[T]) bool {
@@ -54,7 +58,7 @@ pub struct CondVar {
         const timed_out = !@sleepCondVar(&self._handle, lock._lock_handle, timeout.as_millis_u32());
 
         var result: TryWaitResult[T] = undefined;
-        result.guard = lock;
+        result.lock = lock;
         result.timed_out = timed_out;
         return result;
     }
