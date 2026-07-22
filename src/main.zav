@@ -13,61 +13,12 @@ use std::str::String;
 use lexer::Lexer;
 use lexer::TokenType;
 
-use std::thread::ThreadArgs;
-use std::thread::Thread;
-use std::sync::MutexLock;
-use std::sync::Mutex;
-use std::sync::CondVar;
-
-var mutex = std::sync::Mutex::[bool]::new(true);
-var cond_var: CondVar = undefined;
-var count = 0;
-
-pub fn worker(args: ThreadArgs[i64, bool]) i64 {
-    const in = args.in().*;
-    defer args.free();
-    
-    {
-        var lock = CondVar::wait_while::[bool](&cond_var, mutex.lock(), |ready: *bool| -> bool !ready.*);
-        defer lock.free();
-        count += 1;
-        lock.item.* = false;
-    }
-    cond_var.notify_all();
-
-    args.out().* = true;
-    return 0;
-}
-
 pub fn main(argc: i64, argv: **const u8) i64 {
-    cond_var.init();
-    var list = std::collections::list::List::[Thread[i64, bool]]::new();
-
-    for (0..10000) |i| {
-        list.push(Thread::[i64, bool]::new(worker, i).unwrap_ok());
-    }
-
-    for (0..10000) |i| {
-        {
-            var lock = CondVar::wait_while::[bool](&cond_var, mutex.lock(), |ready: *bool| -> bool ready.*);
-            lock.free();
-            lock.item.* = true;
-        }
-        cond_var.notify_one();
-    }
     
-    for (0..list.len, list.items) |_, thread| {
-        if (!thread.join().unwrap_ok()) {
-            @printf("ERROR\n");
-        }
-    }
-    list.free();
-
-    var lock = mutex.lock();
-    lock.free();
 
     const start = std::time::Instant::now();
     defer @printf("Time to run: %f s\n", start.elapsed().as_secs_f64());
+    channel_test();
     
     const settings = args::ArgsParser::new(argc, argv)
         .parse();
@@ -102,5 +53,52 @@ pub fn main(argc: i64, argv: **const u8) i64 {
     }
     @printf("TokenType::Eof\n");
 
+    return 0;
+}
+
+use std::thread::ThreadArgs;
+use std::thread::Thread;
+use std::sync::mpmc;
+use std::sync::mpmc::Receiver;
+
+pub fn channel_test() void {
+    const channel = mpmc::channel::[i64]();
+
+    var threads: [10]Thread[Receiver[i64], u64] = undefined;
+
+    for (0..@len(threads), &threads) |_, thread| {
+        thread.* = Thread::[Receiver[i64], u64]::new(channel_worker, channel.receiver.clone()).unwrap_ok();
+    }
+    defer {
+        for (0..@len(threads), &threads) |i, thread| {
+            @printf("%d: %llu\n", i, thread.join().unwrap_ok());
+            thread.free();
+        }
+    }
+
+    defer channel.sender.free();
+    defer channel.receiver.free();
+
+    for (0..250) |i| {
+        const res = channel.sender.send(i);
+        if (res.is_err()) {
+            @printf("Failed to send: %d\n", res.unwrap_err());
+        }
+    }
+}
+
+pub fn channel_worker(args: ThreadArgs[Receiver[i64], u64]) i64 {
+    defer args.free();
+
+    const receiver = args.in();
+    defer receiver.free();
+
+    var msg = receiver.recv();
+    while (msg.is_some()) {
+        for (0..200_000_000) |_| {}
+        @printf("%d Received: %d\n", std::thread::osId(), msg.unwrap());
+    } loop msg = receiver.recv();
+
+    args.out().* = std::thread::osId();
     return 0;
 }

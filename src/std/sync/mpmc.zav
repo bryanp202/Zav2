@@ -1,0 +1,288 @@
+use super::Arc;
+use super::CondVar;
+use super::Mutex;
+use super::super::collections::deque::Deque;
+use super::super::option::Option;
+use super::super::result::Result;
+
+pub enum Error {
+    Disconnected,
+    Full,
+    Empty
+}
+
+pub struct TrySendError[T] {
+    item: T;
+    error: Error;
+
+    pub fn free(self: *const TrySendError[T]) void {
+        compif (T::free) {
+            self.item.free();
+        }
+    }
+
+    pub fn get(self: *const TrySendError[T]) *const T {
+        return &self.item;
+    }
+
+    pub fn err(self: *const TrySendError[T]) Error {
+        return self.error;
+    }
+}
+
+pub fn [T] channel() Channel[T] {
+    var chan: Channel[T] = undefined;
+
+    var inner: Inner[T] = undefined;
+    inner.capacity = 18446744073709551615 as u64;
+    inner.senders = 1 as u64;
+    inner.receivers = 1 as u64;
+    inner.deque = Deque::[T]::new();
+
+    var shared: Shared[T] = undefined;
+    shared.inner = Mutex::[Inner[T]]::new(inner);
+    shared.empty_condvar = CondVar::new();
+    shared.full_condvar = CondVar::new();
+
+    const arc = Arc::[Shared[T]]::new(shared);
+
+    chan.sender._inner = arc.clone();
+    chan.receiver._inner = arc;
+
+    return chan;
+}
+
+pub fn [T] sync_channel(capacity: u64) SyncChannel[T] {
+    var sync_chan: SyncChannel[T] = undefined;
+
+    var inner: Inner[T] = undefined;
+    inner.capacity = capacity;
+    inner.senders = 1 as u64;
+    inner.receivers = 1 as u64;
+    inner.deque = Deque::[T]::with_capacity(capacity);
+
+    var shared: Shared[T] = undefined;
+    shared.inner = Mutex::[Inner[T]]::new(inner);
+    shared.empty_condvar = CondVar::new();
+    shared.full_condvar = CondVar::new();
+
+    const arc = Arc::[Shared[T]]::new(shared);
+
+    sync_chan.sender._inner = arc.clone();
+    sync_chan.receiver._inner = arc;
+
+    return sync_chan;
+}
+
+pub struct Channel[T] {
+    sender: Sender[T];
+    receiver: Receiver[T];
+}
+
+pub struct SyncChannel[T] {
+    sender: SyncSender[T];
+    receiver: Receiver[T];
+}
+
+pub struct Inner[T] {
+    deque: Deque[T];
+    capacity: u64;
+    senders: u64;
+    receivers: u64;
+}
+
+pub struct Shared[T] {
+    inner: Mutex[Inner[T]];
+    empty_condvar: CondVar;
+    full_condvar: CondVar;
+}
+
+pub struct SyncSender[T] {
+    _inner: Arc[Shared[T]];
+
+    pub fn clone(self: *const SyncSender[T]) SyncSender[T] {
+        var cloned: SyncSender[T] = undefined;
+        cloned._inner = self._inner.clone();
+
+        var lock = self._inner.get().inner.lock();
+        defer lock.free();
+        lock.item.senders += 1 as u64;
+
+        return cloned;
+    }
+
+    pub fn free(self: *const SyncSender[T]) void {
+        var lock = self._inner.get().inner.lock();
+
+        lock.item.senders -= 1 as u64;
+        const senders = lock.item.senders;
+        lock.free();
+
+        if (senders == 0 as u64) {
+            // Notify any receivers waiting for a msg
+            self._inner.get().empty_condvar.notify_all();
+        }
+        self._inner.free();
+    }
+
+    pub fn send(self: *const SyncSender[T], msg: T) Result[void, T] {
+        var lock = self._inner.get().inner.lock();
+        while (true) {
+            if (lock.item.receivers == 0 as u64) {
+                lock.free();
+                return Result::[void, T]::new_err(msg);
+            }
+
+            if (lock.item.deque.len >= lock.item.capacity) {
+                lock = CondVar::wait::[Inner[T]](&self._inner.get().full_condvar, lock);
+                continue;
+            }
+
+            lock.item.deque.push_back(msg);
+            lock.free();
+
+            self._inner.get().empty_condvar.notify_one();            
+            return Result::[void, T]::new_ok(nullptr as void);
+        }
+    }
+
+    pub fn try_send(self: *const SyncSender[T], msg: T) Result[void, TrySendError[T]] {
+        var lock = self._inner.get().inner.lock();
+        
+        if (lock.item.receivers == 0 as u64) {
+            lock.free();
+            var result: TrySendError[T] = undefined;
+            result.item = msg;
+            result.error = Error::Disconnected;
+            return Result::[void, TrySendError[T]]::new_err(result);
+        }
+
+        if (lock.item.deque.len >= lock.item.capacity) {
+            lock.free();
+            var result: TrySendError[T] = undefined;
+            result.item = msg;
+            result.error = Error::Full;
+            return Result::[void, TrySendError[T]]::new_err(result);
+        }
+
+        lock.item.deque.push_back(msg);
+        lock.free();
+
+        self._inner.get().empty_condvar.notify_one();
+        return Result::[void, TrySendError[T]]::new_ok(nullptr as void);
+    }
+}
+
+pub struct Sender[T] {
+    _inner: Arc[Shared[T]];
+
+    pub fn clone(self: *const Sender[T]) Sender[T] {
+        var cloned: Sender[T] = undefined;
+        cloned._inner = self._inner.clone();
+
+        var lock = self._inner.get().inner.lock();
+        defer lock.free();
+        lock.item.senders += 1 as u64;
+        
+        return cloned;
+    }
+
+    pub fn free(self: *const Sender[T]) void {
+        var lock = self._inner.get().inner.lock();
+
+        lock.item.senders -= 1 as u64;
+        const senders = lock.item.senders;
+        lock.free();
+
+        if (senders == 0 as u64) {
+            // Notify any receivers waiting for a msg
+            self._inner.get().empty_condvar.notify_all();
+        }
+        self._inner.free();
+    }
+
+    pub fn send(self: *const Sender[T], msg: T) Result[void, T] {
+        var lock = self._inner.get().inner.lock();
+        while (true) {
+            if (lock.item.receivers == 0 as u64) {
+                lock.free();
+                return Result::[void, T]::new_err(msg);
+            }
+            
+            lock.item.deque.push_back(msg);
+            lock.free();
+
+            self._inner.get().empty_condvar.notify_one();
+            return Result::[void, T]::new_ok(nullptr as void);
+        }
+    }
+}
+
+pub struct Receiver[T] {
+    _inner: Arc[Shared[T]];
+
+    pub fn clone(self: *const Receiver[T]) Receiver[T] {
+        var cloned: Receiver[T] = undefined;
+        cloned._inner = self._inner.clone();
+
+        var lock = self._inner.get().inner.lock();
+        defer lock.free();
+        lock.item.receivers += 1 as u64;
+        
+        return cloned;
+    }
+
+    pub fn free(self: *const Receiver[T]) void {
+        var lock = self._inner.get().inner.lock();
+
+        lock.item.receivers -= 1 as u64;
+        const receivers = lock.item.receivers;
+        lock.free();
+
+        if (receivers == 0 as u64) {
+            // Notify any senders waiting for a msg
+            self._inner.get().full_condvar.notify_all();
+        }
+
+        self._inner.free();
+    }
+
+    pub fn recv(self: *const Receiver[T]) Option[T] {
+        var lock = self._inner.get().inner.lock();
+
+        while (lock.item.deque.len == 0 as u64) {
+            if (lock.item.senders == 0 as u64) {
+                lock.free();
+                return Option::[T]::new_none();
+            }
+
+            lock = CondVar::wait::[Inner[T]](
+                &self._inner.get().empty_condvar,
+                lock
+            );
+        }
+        
+        const msg = lock.item.deque.pop_front();
+        lock.free();
+
+        self._inner.get().full_condvar.notify_one();
+        return msg;
+    }
+
+    pub fn try_recv(self: *const Receiver[T]) Result[T, Error] {
+        var lock = self._inner.get().inner.lock();
+
+        if (lock.item.deque.len == 0 as u64) {
+            lock.free();
+            return Result::[T, Error]::new_err(
+                lock.item.receivers == 0 as u64 ? Error::Disconnected : Error::Empty
+            );
+        }
+
+        const msg = lock.item.deque.pop_front().unwrap();
+        lock.free();
+
+        self._inner.get().full_condvar.notify_one();
+        return Result::[T, Error]::new_ok(msg);
+    }
+}
