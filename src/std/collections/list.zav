@@ -98,6 +98,14 @@ pub struct List[T] {
         return item;
     }
 
+    /// Invalid to call on out of bounds index
+    pub fn replace(self: *List[T], index: u64, item: T) void {
+        compif (T::free) {
+            self.items[index].free();
+        }
+        self.items[index] = item;
+    }
+
     /* Private Helpers */
 
     fn resize(self: *List[T]) void {
