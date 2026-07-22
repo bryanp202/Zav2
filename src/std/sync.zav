@@ -182,6 +182,10 @@ pub struct ReadLock[T] {
     }
 }
 
+struct ArcInternal[T] {
+    item: T;
+    count: AtomicU64;
+}
 
 pub struct Arc[T] {
     _inner: *ArcInternal[T];
@@ -202,6 +206,9 @@ pub struct Arc[T] {
     pub fn free(self: *const Arc[T]) void {
         self._inner.count.fetch_add(-1 as u64);
         if (self._inner.count.get() == 0 as u64) {
+            compif (T::free) {
+                self._inner.item.free();
+            }
             @free(self._inner);
         }
     }
@@ -209,11 +216,6 @@ pub struct Arc[T] {
     pub fn get(self: *const Arc[T]) *T {
         return &self._inner.item;
     }
-}
-
-struct ArcInternal[T] {
-    item: T;
-    count: AtomicU64;
 }
 
 pub struct Barrier {

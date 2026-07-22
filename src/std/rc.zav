@@ -1,3 +1,8 @@
+struct RcInternal[T] {
+    item: T;
+    count: u64;
+}
+
 pub struct Rc[T] {
     _inner: *RcInternal[T];
 
@@ -16,19 +21,15 @@ pub struct Rc[T] {
 
     pub fn free(self: *const Rc[T]) void {
         self._inner.count -= 1 as u64;
-        @printf("%d\n", self._inner.count);
         if (self._inner.count == 0 as u64) {
+            compif (T::free) {
+                self._inner.item.free();
+            }
             @free(self._inner);
-            @printf("Freed\n");
         }
     }
 
     pub fn get(self: *const Rc[T]) *T {
         return &self._inner.item;
     }
-}
-
-struct RcInternal[T] {
-    item: T;
-    count: u64;
 }
