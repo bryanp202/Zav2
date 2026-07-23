@@ -18,13 +18,13 @@ pub fn sleep(duration: Duration) void {
 /// Must call either free() or join() to clean up resources
 pub struct Thread[I, O] {
     _handle: i64;
-    args: ThreadArgs[I, O];
+    args: Arc[ThreadArgs[I, O]];
 
-    pub fn new(work: fn(ThreadArgs[I, O])i64, in: I) Result[Thread[I, O], Error] {
+    pub fn new(worker: fn(I)O, in: I) Result[Thread[I, O], Error] {
         var self: Thread[I, O] = undefined;
-        self.args = ThreadArgs::[I, O]::new(in);
-        const thread_args = self.args._inner.clone();
-        self._handle = @createThread(work as fn(*void)i64, thread_args._inner as *void);
+        self.args = Arc::[ThreadArgs[I, O]]::new(ThreadArgs::[I, O]::new(worker, in));
+        const thread_args = self.args.clone();
+        self._handle = @createThread(Thread::[I, O]::worker as fn(*void)i64, thread_args._inner as *void);
 
         if (self._handle == 0) {
             thread_args.free();
@@ -35,49 +35,49 @@ pub struct Thread[I, O] {
         return Result::[Thread[I, O], Error]::new_ok(self);
     }
 
+    /// Does not free the output value that would be returned by `Thread[I, O]::join`
     pub fn free(self: *const Thread[I, O]) void {
         @closeHandle(self._handle);
         self.args.free();
     }
 
+    /// If join is not called or the value returned from join is not freed,
+    /// memory may leak.
     pub fn join(self: *const Thread[I, O]) Result[O, Error] {
         if (@waitOne(self._handle) != 0) {
             return Result::[O, Error]::new_err(Error::FailedToJoinThread);
         }
-        return Result::[O, Error]::new_ok(self.args.out().*);
+        return Result::[O, Error]::new_ok(self.args.get().out);
     }
 
     pub fn eql(self: *const Thread[I, O], other: *const Thread[I, O]) bool {
         return self._handle == other._handle;
     }
+
+    fn worker(args: Arc[ThreadArgs[I, O]]) i64 {
+        defer args.free();
+        const worker = args.get().worker;
+        args.get().out = worker(args.get().in);
+        return 0;
+    }
 }
 
-pub struct ThreadArgs[I, O] {
-    _inner: Arc[ThreadArgsInner[I, O]];
+pub struct ThreadArgs[I, O] { // TODO ZAV2 this should be able to be non-public
+    worker: fn(I)O;
+    in: I;
+    out: O;
 
-    pub fn new(in: I) ThreadArgs[I, O] {
+    pub fn new(worker: fn(I)O, in: I) ThreadArgs[I, O] {
         var self: ThreadArgs[I, O] = undefined;
-        var args: ThreadArgsInner[I, O] = undefined;
-        args.in = in;
-        self._inner = Arc::[ThreadArgsInner[I, O]]::new(args);
+        self.worker = worker;
+        self.in = in;
         return self;
     }
 
     pub fn free(self: *const ThreadArgs[I, O]) void {
-        self._inner.free();
+        compif (I::free) {
+            self.in.free();
+        }
     }
-
-    pub fn in(self: *const ThreadArgs[I, O]) *const I {
-        return &self._inner.get().in;
-    }
-
-    pub fn out(self: *const ThreadArgs[I, O]) *O {
-        return &self._inner.get().out;
-    }
-}
-
-struct ThreadArgsInner[I, O] {
-    in: I;
-    out: O;
 }
 
