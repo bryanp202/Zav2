@@ -14,8 +14,6 @@ use lexer::Lexer;
 use lexer::TokenType;
 
 pub fn main(argc: i64, argv: **const u8) i64 {
-    
-
     const start = std::time::Instant::now();
     defer @printf("Time to run: %f s\n", start.elapsed().as_secs_f64());
     channel_test();
@@ -56,7 +54,6 @@ pub fn main(argc: i64, argv: **const u8) i64 {
     return 0;
 }
 
-use std::thread::ThreadArgs;
 use std::thread::Thread;
 use std::sync::mpmc;
 use std::sync::mpmc::Receiver;
@@ -69,6 +66,7 @@ pub fn channel_test() void {
     for (0..@len(threads), &threads) |_, thread| {
         thread.* = Thread::[Receiver[i64], u64]::new(channel_worker, channel.receiver.clone()).unwrap_ok();
     }
+    
     defer {
         for (0..@len(threads), &threads) |i, thread| {
             @printf("%d: %llu\n", i, thread.join().unwrap_ok());
@@ -87,10 +85,7 @@ pub fn channel_test() void {
     }
 }
 
-pub fn channel_worker(args: ThreadArgs[Receiver[i64], u64]) i64 {
-    defer args.free();
-
-    const receiver = args.in();
+pub fn channel_worker(receiver: Receiver[i64]) u64 {
     defer receiver.free();
 
     var msg = receiver.recv();
@@ -99,6 +94,5 @@ pub fn channel_worker(args: ThreadArgs[Receiver[i64], u64]) i64 {
         @printf("%d Received: %d\n", std::thread::osId(), msg.unwrap());
     } loop msg = receiver.recv();
 
-    args.out().* = std::thread::osId();
-    return 0;
+    return std::thread::osId();
 }
