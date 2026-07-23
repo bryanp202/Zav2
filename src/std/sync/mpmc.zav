@@ -89,12 +89,20 @@ pub struct Inner[T] {
     capacity: u64;
     senders: u64;
     receivers: u64;
+
+    pub fn free(self: *const Inner[T]) void {
+        self.deque.free();
+    }
 }
 
 pub struct Shared[T] {
     inner: Mutex[Inner[T]];
     empty_condvar: CondVar;
     full_condvar: CondVar;
+
+    pub fn free(self: *const Shared[T]) void {
+        self.inner.free();
+    }
 }
 
 pub struct SyncSender[T] {
