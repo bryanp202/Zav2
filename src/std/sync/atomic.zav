@@ -15,8 +15,8 @@ pub struct AtomicI64 {
         self._inner = num;
     }
 
-    pub fn fetch_add(self: *AtomicI64, num: i64) void {
-        @xaddi64(&self._inner, num);
+    pub fn fetch_add(self: *AtomicI64, num: i64) i64 {
+        return @xaddi64(&self._inner, num) as i64;
     }
 
     pub fn cmp_exchange(self: *AtomicI64, expected: i64, new: i64) bool {
@@ -49,8 +49,8 @@ pub struct AtomicU64 {
         self._inner = num;
     }
 
-    pub fn fetch_add(self: *AtomicU64, num: u64) void {
-        @xaddi64(&self._inner as *i64, num as i64);
+    pub fn fetch_add(self: *AtomicU64, num: u64) u64 {
+        return @xaddi64(&self._inner as *i64, num as i64) as u64;
     }
 
     pub fn cmp_exchange(self: *AtomicU64, expected: u64, new: u64) bool {
