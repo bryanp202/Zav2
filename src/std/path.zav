@@ -11,6 +11,10 @@ pub struct PathBuf {
         return self;
     }
 
+    pub fn free(self: *const PathBuf) void {
+        self.data.free();
+    }
+
     pub fn from_slice(path: Slice[u8]) PathBuf {
         var self: PathBuf = undefined;
         self.data = String::from_slice(path);
@@ -27,7 +31,11 @@ pub struct PathBuf {
         return self.data.as_slice();
     }
 
-    pub fn copy(self: *const PathBuf) PathBuf {
+    pub fn clone(self: *const PathBuf) PathBuf {
         return PathBuf::from_slice(self.as_slice());
+    }
+
+    pub fn chars(self: *const PathBuf) *const u8 {
+        return self.data.chars;
     }
 }
