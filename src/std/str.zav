@@ -4,13 +4,13 @@ use super::mem;
 /// A mutatable string
 /// Owns the data it holds
 pub struct String {
-    chars: *u8;
+    data: *u8;
     capacity: u64;
     len: u64;
 
     pub fn new() String {
         var self: String = undefined;
-        self.chars = nullptr;
+        self.data = nullptr;
         self.capacity = 0 as u64;
         self.len = 0 as u64;
         return self;
@@ -19,8 +19,8 @@ pub struct String {
     /// Makes a copy of the slice
     pub fn from_slice(slice: Slice[u8]) String {
         var self: String = undefined;
-        self.chars = @malloc(slice.len) as *u8;
-        mem::cpy::[u8](slice.len, self.chars, slice.ptr);
+        self.data = @malloc(slice.len) as *u8;
+        mem::cpy::[u8](slice.len, self.data, slice.ptr);
         self.capacity = 0 as u64;
         self.len = slice.len;
         
@@ -32,28 +32,41 @@ pub struct String {
         var self: String = undefined;
         self.len = cstr_len(cstr);
         self.capacity = self.len;
-        self.chars = @malloc(self.len) as *u8;
-        mem::cpy::[u8](self.len, self.chars, cstr);
+        self.data = @malloc(self.len) as *u8;
+        mem::cpy::[u8](self.len, self.data, cstr);
         
         return self;
     }
 
-    /// Free up memory
     pub fn free(self: *const String) void {
-        @free(self.chars);
+        @free(self.data);
+    }
+
+    pub fn clone(self: *const String) String {
+        var clone: String = undefined;
+        clone.capacity = self.capacity;
+        clone.len = self.len;
+        clone.data = @malloc(self.capacity) as *u8;
+        mem::cpy::[u8](clone.len, clone.data, self.data);
+
+        return clone;
+    }
+
+    pub fn chars(self: *const String) *const u8 {
+        return self.data;
     }
 
     /// Return a non-owning slice
     pub fn as_slice(self: *const String) Slice[u8] {
-        return Slice::[u8]::new(self.chars, self.len);
+        return Slice::[u8]::new(self.data, self.len);
     }
 
     pub fn append(self: *String, slice: Slice[u8]) void {
-        if (self.len + slice.len > self.capacity) {
+        while (self.len + slice.len > self.capacity) {
             self.resize();
         }
 
-        mem::cpy::[u8](slice.len, &self.chars[self.len], slice.ptr);
+        mem::cpy::[u8](slice.len, &self.data[self.len], slice.ptr);
         self.len += slice.len;
     }
 
@@ -65,37 +78,37 @@ pub struct String {
 
     /// Get the u8 at index i
     pub fn get(self: *const String, i: i64) u8 {
-        return self.chars[i];
+        return self.data[i];
     }
 
     /// Find the first instance of a specified u8
     /// Returns -1 if not found
     pub fn find(self: *const String, needle: u8) i64 {
-        return nstr_find(self.len, self.chars, needle);
+        return nstr_find(self.len, self.data, needle);
     }
 
     /// Returns true if the strings are identical
     pub fn eql(self: *const String, other: *const String) bool {
         if (self.len != other.len) return false;
-        return nstr_eql(self.len, self.chars, other.chars);
+        return nstr_eql(self.len, self.data, other.data);
     }
 
     /// Converts string to u32 hash
     /// Not collision resistant
     pub fn hash(self: *const String) u32 {
-        return nstr_hash(self.len, self.chars);
+        return nstr_hash(self.len, self.data);
     }
 
     /// For debugging purposes
     pub fn debug(self: *const String) void {
-        @printf("\"%.*s\"\n", self.len, self.chars);
+        @printf("\"%.*s\"\n", self.len, self.data);
     }
 
     /* PRIVATE HELPERS */
 
     fn resize(self: *String) void {
-        const new_buf = @realloc(self.chars, self.capacity * 2) as *u8;
-        self.chars = new_buf;
+        const new_buf = @realloc(self.data, self.capacity * 2) as *u8;
+        self.data = new_buf;
     }
 }
 

@@ -36,6 +36,6 @@ pub struct PathBuf {
     }
 
     pub fn chars(self: *const PathBuf) *const u8 {
-        return self.data.chars;
+        return self.data.chars();
     }
 }
