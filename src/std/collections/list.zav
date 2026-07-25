@@ -31,6 +31,27 @@ pub struct List[T] {
         @free(self.items);
     }
 
+    pub fn clone(self: *const List[T]) List[T] {
+        var clone: List[T] = undefined;
+        clone.items = @malloc(@sizeof(0 as T) * self.capacity) as *T;
+        clone.len = self.len;
+        clone.capacity = self.capacity;
+        
+        for (0..self.len, self.items) |i, item| {
+            compif (T::clone) {
+                clone.items[i] = item.clone();
+            } else {
+                clone.items[i] = item.*;
+            }
+        }
+
+        return clone;
+    }
+
+    pub fn is_empty(self: *const List[T]) bool {
+        return self.len == 0 as u64;
+    }
+
     pub fn clear(self: *List[T]) void {
         self.free();
         self.items = nullptr;

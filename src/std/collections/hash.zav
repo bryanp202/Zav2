@@ -37,6 +37,10 @@ pub struct HashMap[K, V, H] {
         @free(self.items);
     }
 
+    pub fn is_empty(self: *const HashMap[K, V, H]) bool {
+        return self.len == 0 as u64;
+    }
+
     pub fn iter(self: *const HashMap[K, V, H]) EntryIter[K, V] {
         return EntryIter::[K, V]::new(self.capacity, self.items);
     }

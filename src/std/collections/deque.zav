@@ -21,10 +21,14 @@ pub struct RingBuf[T] {
     pub fn free(self: *const Deque[T]) void {
         compif (T::free) {
             for (0..self.len) |i| {
-                self.items[self.to_buf_index(i)].free();
+                self.items[self.to_buf_index(i as u64)].free();
             }
         }
         @free(self.items);
+    }
+
+    pub fn is_empty(self: *const RingBuf[T]) bool {
+        return self.len == 0 as u64;
     }
 
     pub fn push_back(self: *RingBuf[T], item: T) Result[void, T] {
@@ -104,10 +108,14 @@ pub struct Deque[T] {
     pub fn free(self: *const Deque[T]) void {
         compif (T::free) {
             for (0..self.len) |i| {
-                self.items[self.to_buf_index(i)].free();
+                self.items[self.to_buf_index(i as u64)].free();
             }
         }
         @free(self.items);
+    }
+
+    pub fn is_empty(self: *const Deque[T]) bool {
+        return self.len == 0 as u64;
     }
 
     pub fn clear(self: *Deque[T]) void {
@@ -121,7 +129,7 @@ pub struct Deque[T] {
     pub fn clear_retain_capacity(self: *Deque[T]) void {
         compif (T::free) {
             for (0..self.len) |i| {
-                self.items[self.to_buf_index(i)].free();
+                self.items[self.to_buf_index(i as u64)].free();
             }
         }
         self.front = 0 as u64;
