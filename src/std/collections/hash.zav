@@ -37,6 +37,20 @@ pub struct HashMap[K, V, H] {
         @free(self.items);
     }
 
+    pub fn clone(self: *const HashMap[K, V, H]) HashMap[K, V, H] {
+        var clone: HashMap[K, V, H] = undefined;
+        clone.items = @malloc(@sizeof(self.items.*) * self.capacity) as *Entry[K, V];
+        clone.len = self.len;
+        clone.capacity = self.capacity;
+        clone.hasher = self.hasher;
+        clone.max_density = self.max_density;
+
+        for (0..self.capacity, self.items) |i, item| {
+            clone.items[i] = item.clone();
+        }
+        return clone;
+    }
+
     pub fn is_empty(self: *const HashMap[K, V, H]) bool {
         return self.len == 0 as u64;
     }
@@ -64,10 +78,10 @@ pub struct HashMap[K, V, H] {
     pub fn get(self: *const HashMap[K, V, H], k: K) Option[V] {
         const entry = self.find_entry(&k);
 
-        if (entry.is_some()) {
-            return Option::[V]::new_some(entry.unwrap().val); 
+        if (entry.is_none()) {
+            return Option::[V]::new_none();            
         }
-        return Option::[V]::new_none();
+        return Option::[V]::new_some(entry.unwrap().val); 
     }
 
     pub fn get_ptr(self: *HashMap[K, V, H], k: K) Option[*V] {
@@ -112,7 +126,7 @@ pub struct HashMap[K, V, H] {
             var hasher = self.hasher;
             return K::hash::[H](k, &hasher);
         } else {
-            return self.hasher.hash(k as *const u8, @sizeof(k.*));
+            return self.hasher.hash_one(k as *const u8, @sizeof(k.*));
         }
     }
 
@@ -124,12 +138,8 @@ pub struct HashMap[K, V, H] {
         var i = k_hash % self.capacity;
 
         while (self.items[i].type == EntryType::Some) {
-            if (self.items[i].hash == k_hash) {
-                compif (K::eql) {
-                    if (k.eql(&self.items[i].key)) return &self.items[i];
-                } else {
-                    if(k == self.items[i].key) return &self.items[i];
-                }
+            if (self.items[i].matches(k, k_hash)) {
+                return &self.items[i];
             }
         } loop i = (i + 1 as u64) % self.capacity;
 
@@ -152,16 +162,8 @@ pub struct HashMap[K, V, H] {
                 continue;
             }
 
-            if (self.items[i].hash == k_hash) {
-                compif (K::eql) {
-                    if (k.eql(&self.items[i].key)) {
-                        return Option::[*Entry[K, V]]::new_some(&self.items[i]);
-                    }
-                } else {
-                    if(k == self.items[i].key) {
-                        return Option::[*Entry[K, V]]::new_some(&self.items[i]);
-                    }
-                }
+            if (self.items[i].matches(k, k_hash)) {
+                return Option::[*Entry[K, V]]::new_some(&self.items[i]);
             }
         } loop i = (i + 1 as u64) % self.capacity;
 
@@ -188,7 +190,7 @@ enum EntryType {
     Some
 }
 
-pub struct Entry[K, V] {
+pub struct Entry[K, V] { // TODO ZAV2 make not public
     hash: u64;
     key: K;
     val: V;
@@ -200,6 +202,37 @@ pub struct Entry[K, V] {
         }
         compif (V::free) {
             self.val.free();
+        }
+    }
+
+    pub fn clone(self: *const Entry[K, V]) Entry[K, V] {
+        var clone: Entry[K, V] = undefined;
+        clone.type = self.type;
+
+        if (self.type == EntryType::None) {
+            return clone;
+        }
+
+        compif (K::clone) {
+            clone.key = self.key.clone();
+        } else {
+            clone.key = self.key;
+        }
+        compif (V::clone) {
+            clone.val = self.val.clone();
+        } else {
+            clone.val = self.val;
+        }
+
+        clone.hash = self.hash;
+        return clone;
+    }
+
+    pub fn matches(self: *const Entry[K, V], k: *const K, k_hash: u64) bool {
+        compif (K::eql) {
+            return self.hash == k_hash and self.key.eql(k);
+        } else {
+            return self.hash == k_hash and self.key == k.*;
         }
     }
 }
