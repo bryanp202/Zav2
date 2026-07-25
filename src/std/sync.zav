@@ -14,8 +14,8 @@ pub struct TryWaitResult[T] {
     lock: T;
     timed_out: bool;
 
-    pub fn free(self: *const TryWaitResult[T]) void {
-        self.lock.free();
+    pub fn release(self: *const TryWaitResult[T]) void {
+        self.lock.release();
     }
 
     pub fn get(self: *const TryWaitResult[T]) *MutexLock[T] {
@@ -137,7 +137,7 @@ pub struct MutexLock[T] {
         return self;
     }
 
-    pub fn free(self: *MutexLock[T]) void {
+    pub fn release(self: *const MutexLock[T]) void {
         @mutexReleaseExclusive(self._lock_handle);
     }
 
@@ -157,7 +157,7 @@ pub struct WriteLock[T] {
         return self;
     }
 
-    pub fn free(self: *WriteLock[T]) void {
+    pub fn release(self: *const WriteLock[T]) void {
         @mutexReleaseShared(self._handle);
     }
 
@@ -177,7 +177,7 @@ pub struct ReadLock[T] {
         return self;
     }
 
-    pub fn free(self: *ReadLock[T]) void {
+    pub fn release(self: *const ReadLock[T]) void {
         @mutexReleaseExclusive(self._handle);
     }
 
@@ -208,8 +208,7 @@ pub struct Arc[T] {
     }
 
     pub fn free(self: *const Arc[T]) void {
-        self._inner.count.fetch_add(-1 as u64);
-        if (self._inner.count.get() == 0 as u64) {
+        if (self._inner.count.fetch_add(-1 as u64) == 1 as u64) {
             compif (T::free) {
                 self._inner.item.free();
             }
@@ -219,6 +218,23 @@ pub struct Arc[T] {
 
     pub fn get(self: *const Arc[T]) *T {
         return &self._inner.item;
+    }
+
+    /// Use if you want to free an arc where `T::free` is unsafe to call
+    pub fn unsafe_free_no_clean_up(self: *const Arc[T]) void {
+        if (self._inner.count.fetch_add(-1 as u64) == 1 as u64) {
+            compif (T::free) {
+                self._inner.item.free();
+            }
+            @free(self._inner);
+        }
+    }
+
+    pub fn unsafe_new_uninit() Arc[T] {
+        var self: Arc[T] = undefined;
+        self._inner = @malloc(@sizeof(self._inner.*)) as *ArcInternal[T];
+        self._inner.count = AtomicU64::new(1 as u64);
+        return self;
     }
 }
 
@@ -241,7 +257,7 @@ pub struct Barrier {
 
     pub fn wait(self: *Barrier) bool {
         var lock = self.mutex.lock();
-        defer lock.free();
+        defer lock.release();
 
         const gen = lock.item.current_gen;
         lock.item.count += 1 as u64;
