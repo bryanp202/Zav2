@@ -3,7 +3,6 @@ use super::sync::Arc;
 use super::time::Duration;
 
 pub enum Error {
-    FailedToSpawnThread,
     FailedToJoinThread
 }
 
@@ -18,27 +17,29 @@ pub fn sleep(duration: Duration) void {
 /// Must call either free() or join() to clean up resources
 pub struct Thread[I, O] {
     _handle: i64;
-    args: Arc[ThreadArgs[I, O]];
+    out: Arc[O];
 
-    pub fn new(worker: fn(I)O, in: I) Result[Thread[I, O], Error] {
+    pub fn new(worker: fn(I)O, in: I) Result[Thread[I, O], I] {
+        const thread_args = @malloc(@sizeof(ThreadArgs::[I, O]::new(worker, in))) as *ThreadArgs[I, O];
+        thread_args.* = ThreadArgs::[I, O]::new(worker, in);
+
         var self: Thread[I, O] = undefined;
-        self.args = Arc::[ThreadArgs[I, O]]::new(ThreadArgs::[I, O]::new(worker, in));
-        const thread_args = self.args.clone();
-        self._handle = @createThread(Thread::[I, O]::worker as fn(*void)i64, thread_args._inner as *void);
+        self.out = thread_args.out.clone();
+        self._handle = @createThread(Thread::[I, O]::worker as fn(*void)i64, thread_args as *void);
 
         if (self._handle == 0) {
-            thread_args.free();
-            self.args.free();
-            return Result::[Thread[I, O], Error]::new_err(Error::FailedToSpawnThread);
+            self.out.unsafe_free_no_clean_up();
+            thread_args.out.unsafe_free_no_clean_up();
+            return Result::[Thread[I, O], I]::new_err(in);
         }
 
-        return Result::[Thread[I, O], Error]::new_ok(self);
+        return Result::[Thread[I, O], I]::new_ok(self);
     }
 
     /// Does not free the output value that would be returned by `Thread[I, O]::join`
     pub fn free(self: *const Thread[I, O]) void {
         @closeHandle(self._handle);
-        self.args.free();
+        self.out.unsafe_free_no_clean_up();
     }
 
     /// If join is not called or the value returned from join is not freed,
@@ -47,37 +48,32 @@ pub struct Thread[I, O] {
         if (@waitOne(self._handle) != 0) {
             return Result::[O, Error]::new_err(Error::FailedToJoinThread);
         }
-        return Result::[O, Error]::new_ok(self.args.get().out);
+        return Result::[O, Error]::new_ok(self.out.get().*);
     }
 
     pub fn eql(self: *const Thread[I, O], other: *const Thread[I, O]) bool {
         return self._handle == other._handle;
     }
 
-    fn worker(args: Arc[ThreadArgs[I, O]]) i64 {
-        defer args.free();
-        const worker = args.get().worker;
-        args.get().out = worker(args.get().in);
+    fn worker(args: *ThreadArgs[I, O]) i64 {
+        args.out.get().* = args.worker(args.in);
+        args.out.unsafe_free_no_clean_up();
+        @free(args);
         return 0;
     }
 }
 
-pub struct ThreadArgs[I, O] { // TODO ZAV2 this should be able to be non-public
+struct ThreadArgs[I, O] {
     worker: fn(I)O;
     in: I;
-    out: O;
+    out: Arc[O];
 
     pub fn new(worker: fn(I)O, in: I) ThreadArgs[I, O] {
         var self: ThreadArgs[I, O] = undefined;
         self.worker = worker;
         self.in = in;
+        self.out = Arc::[O]::unsafe_new_uninit();
         return self;
-    }
-
-    pub fn free(self: *const ThreadArgs[I, O]) void {
-        compif (I::free) {
-            self.in.free();
-        }
     }
 }
 
