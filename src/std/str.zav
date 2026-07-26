@@ -1,179 +1,266 @@
 use super::slice::Slice;
 use super::mem;
+use super::math::max;
 
 /// A mutatable string
 /// Owns the data it holds
 pub struct String {
-    data: *u8;
+    bytes: *u8;
     capacity: u64;
     len: u64;
 
     pub fn new() String {
         var self: String = undefined;
-        self.data = nullptr;
+        self.bytes = nullptr;
         self.capacity = 0 as u64;
         self.len = 0 as u64;
         return self;
     }
 
-    /// Makes a copy of the slice
-    pub fn from_slice(slice: Slice[u8]) String {
-        var self: String = undefined;
-        self.data = @malloc(slice.len) as *u8;
-        mem::cpy::[u8](slice.len, self.data, slice.ptr);
-        self.capacity = 0 as u64;
-        self.len = slice.len;
-        
-        return self;
-    }
-
-    /// Make a new string from a cstr
-    pub fn from_cstr(cstr: *const u8) String {
-        var self: String = undefined;
-        self.len = cstr_len(cstr);
-        self.capacity = self.len;
-        self.data = @malloc(self.len) as *u8;
-        mem::cpy::[u8](self.len, self.data, cstr);
-        
-        return self;
-    }
-
     pub fn free(self: *const String) void {
-        @free(self.data);
+        @free(self.bytes);
     }
 
     pub fn clone(self: *const String) String {
-        var clone: String = undefined;
-        clone.capacity = self.capacity;
-        clone.len = self.len;
-        clone.data = @malloc(self.capacity) as *u8;
-        mem::cpy::[u8](clone.len, clone.data, self.data);
-
-        return clone;
+        return String::from_slice(self.as_slice());
     }
 
-    pub fn chars(self: *const String) *const u8 {
-        return self.data;
+    pub fn eql(self: *const String, other: *const String) bool {
+        if (self.len != other.len) {
+            return false;
+        }
+        if (self.bytes == other.bytes) {
+            return true;
+        }
+        return mem::eql::[u8](self.len, self.bytes, other.bytes);
+    }
+
+    pub fn [H] hash(self: *const String, hasher: *const H) u64 {
+        return hasher.hash_one(self.bytes, self.len);
+    }
+
+    pub fn from_slice(slice: Slice[u8]) String {
+        var self: String = undefined;
+        self.capacity = slice.len;
+        self.len = self.capacity;
+        self.bytes = @malloc(self.capacity) as *u8;
+        mem::cpy::[u8](slice.len, self.bytes, slice.ptr);
+        return self;
+    }
+
+    pub fn from_cstr(cstr: CStr) String {
+        return String::from_slice(cstr.as_slice());
+    }
+
+    pub fn as_ptr(self: *const String) *const u8 {
+        return self.bytes;
     }
 
     /// Return a non-owning slice
     pub fn as_slice(self: *const String) Slice[u8] {
-        return Slice::[u8]::new(self.data, self.len);
+        return Slice::[u8]::new(self.bytes, self.len);
     }
 
     pub fn append(self: *String, slice: Slice[u8]) void {
-        while (self.len + slice.len > self.capacity) {
-            self.resize();
+        if (self.len + slice.len > self.capacity) {
+            self.resize(slice.len);
         }
 
-        mem::cpy::[u8](slice.len, &self.data[self.len], slice.ptr);
+        mem::cpy::[u8](slice.len, &self.bytes[self.len], slice.ptr);
         self.len += slice.len;
     }
 
-    /// Append owned data to an existing String struct
-    pub fn append_cstr(self: *String, cstr: *const u8) void {
-        const len = cstr_len(cstr);
-        return self.append(Slice::[u8]::new(cstr, len));
+    pub fn append_cstr(self: *String, cstr: CStr) void {
+        return self.append(cstr.as_slice());
     }
 
-    /// Get the u8 at index i
-    pub fn get(self: *const String, i: i64) u8 {
-        return self.data[i];
-    }
-
-    /// Find the first instance of a specified u8
-    /// Returns -1 if not found
-    pub fn find(self: *const String, needle: u8) i64 {
-        return nstr_find(self.len, self.data, needle);
-    }
-
-    /// Returns true if the strings are identical
-    pub fn eql(self: *const String, other: *const String) bool {
-        if (self.len != other.len) return false;
-        return nstr_eql(self.len, self.data, other.data);
-    }
-
-    /// Converts string to u32 hash
-    /// Not collision resistant
-    pub fn hash(self: *const String) u32 {
-        return nstr_hash(self.len, self.data);
-    }
-
-    /// For debugging purposes
     pub fn debug(self: *const String) void {
-        @printf("\"%.*s\"\n", self.len, self.data);
+        @printf("\"%.*s\"", self.len, self.bytes);
     }
 
     /* PRIVATE HELPERS */
 
-    fn resize(self: *String) void {
-        const new_buf = @realloc(self.data, self.capacity * 2) as *u8;
-        self.data = new_buf;
+    fn resize(self: *String, append_len: u64) void {
+        const old_capacity = self.capacity;
+        const old_bytes = self.bytes;
+        self.capacity = self.capacity != 0 as u64
+            ? max::[u64](self.capacity * 2 as u64, self.capacity + append_len)
+            : max::[u64](append_len, 8 as u64);
+        self.bytes = @malloc(self.capacity) as *u8;
+        mem::cpy::[u8](self.len, self.bytes, old_bytes);
+        @free(old_bytes);
     }
 }
 
-pub fn cstr_len(cstr: *const u8) u64 {
-    var i = 0 as u64;
-    while (cstr[i] != 0 as u8) {
-        i += 1 as u64;
-    }
-    return i;
-}
+pub struct CString {
+    bytes: *u8;
+    capacity: u64;
+    len: u64;
 
-pub fn cstr_eql(lhs: *const u8, rhs: *const u8) bool {
-    var i = 0;
-    while (lhs[i] == rhs[i]) {
-        if (lhs[i] == 0) {
+    pub fn new() CString {
+        var self: CString = undefined;
+        self.capacity = 8 as u64;
+        self.len = 1 as u64;
+        self.bytes = @malloc(self.capacity) as *u8;
+        self.bytes[0] = 0 as u8;
+        return self;
+    }
+
+    pub fn free(self: *const CString) void {
+        @free(self.bytes);
+    }
+
+    pub fn clone(self: *const CString) CString {
+        return CString::from_slice(self.as_slice());
+    }
+
+    pub fn eql(self: *const CString, other: *const CString) bool {
+        if (self.len != other.len) {
+            return false;
+        }
+        if (self.bytes == other.bytes) {
             return true;
         }
-        i += 1;
+        return mem::eql::[u8](self.len, self.bytes, other.bytes);
+    }
+
+    pub fn [H] hash(self: *const CString, hasher: *const H) u64 {
+        return hasher.hash_one(self.bytes, self.len);
+    }
+
+    pub fn from_slice(slice: Slice[u8]) CString {
+        var self: CString = undefined;
+        self.capacity = slice.len + 1 as u64;
+        self.len = self.capacity;
+        self.bytes = @malloc(self.capacity) as *u8;
+        mem::cpy::[u8](slice.len, self.bytes, slice.ptr);
+        // Null terminate it
+        self.bytes[slice.len] = 0 as u8;        
+        return self;
+    }
+
+    pub fn from_cstr(cstr: CStr) CString {
+        return CString::from_slice(cstr.as_slice());
+    }
+
+    pub fn as_ptr(self: *const CString) *const u8 {
+        return self.bytes;
+    }
+
+    pub fn as_slice(self: *const CString) Slice[u8] {
+        return Slice::[u8]::new(self.bytes, self.len - 1 as u64);
+    }
+
+    pub fn as_cstr(self: *const CString) CStr {
+        var cstr: CStr = undefined;
+        cstr.ptr = self.bytes;
+        cstr.len = self.len;
+        return cstr;
+    }
+
+    pub fn append(self: *CString, slice: Slice[u8]) void {
+        if (self.len + slice.len as u64 > self.capacity) {
+            self.resize(slice.len as u64);
+        }
+
+        mem::cpy::[u8](slice.len, &self.bytes[self.len - 1], slice.ptr);
+        self.len += slice.len as u64;
+        self.bytes[self.len - 1] = 0 as u8;
+    }
+
+    pub fn append_cstr(self: *CString, cstr: CStr) void {
+        return self.append(cstr.as_slice());
+    }
+
+    pub fn debug(self: *const CString) void {
+        @printf("\"%.*s\"", self.len, self.bytes);
+    }
+
+    /* PRIVATE HELPERS */
+
+    fn resize(self: *CString, append_len: u64) void {
+        const old_capacity = self.capacity;
+        const old_bytes = self.bytes;
+        self.capacity = self.capacity != 0 as u64
+            ? max::[u64](self.capacity * 2 as u64, self.capacity + append_len)
+            : max::[u64](append_len, 8 as u64);
+        self.bytes = @malloc(self.capacity) as *u8;
+        mem::cpy::[u8](self.len, self.bytes, old_bytes);
+        @free(old_bytes);
     }
 }
 
-/// Hashes a nstr in u32
-/// Not collision resistant
-pub fn nstr_hash(n: u64, str: *const u8) u32 {
-    var hash = 2166126261 as u32;
+// A non-owning view into a null terminated series of bytes
+pub struct CStr {
+    ptr: *const u8;
+    len: u64;
 
-    var index = 0;
-    while (index < n) {
-        hash ^= str[index];
-        hash *= 1677619 as u32;
-    } loop index += 1;
-
-    return hash;
-}
-
-/// Returns true if nstr are equal
-pub fn nstr_eql(n: u64, lhs: *const u8, rhs: *const u8) bool {
-    var current = 0;
-
-    while (current < n) {
-        if (lhs[current] != rhs[current]) return false;
-        current += 1;
+    pub fn unsafe_from_ptr(ptr: *const u8) CStr {
+        var self: CStr = undefined;
+        self.ptr = ptr;
+        self.len = ptr != nullptr ? CStr::unsafe_ptr_len(ptr) : 0 as u64;
+        return self;
     }
 
-    return true;
-}
-
-/// Find the first instance of a specified u8 in a str of known length
-pub fn nstr_find(n: u64, str: *const u8, needle: u8) i64 {
-    for (0..n, str) |i, char| {
-        if (char.* == needle) return i;
+    pub fn eql(self: *const CStr, other: *const CStr) bool {
+        if (self.len != other.len) {
+            return false;
+        }
+        if (self.ptr == other.ptr) {
+            return true;
+        }
+        return mem::eql::[u8](self.len, self.ptr, other.ptr);
     }
-    return -1;
+
+    pub fn [H] hash(self: *const CStr, hasher: *const H) u64 {
+        return hasher.hash_one(self.ptr, self.len);
+    }
+
+    pub fn as_slice(self: *const CStr) Slice[u8] {
+        return Slice::[u8]::new(self.ptr, self.len);
+    }
+
+    pub fn as_ptr(self: *const CStr) *const u8 {
+        return self.ptr;
+    }
+
+    pub fn unsafe_eql_ptr(self: *const CStr, ptr: *const u8) bool {
+        if (self.ptr == ptr) {
+            return true;
+        }
+        if (ptr == nullptr) {
+            return false;
+        }
+        return mem::eql::[u8](self.len, self.ptr, ptr);
+    }
+
+    pub fn debug(self: *const CStr) void {
+        @printf("\"%.*s\"", self.len, self.ptr);
+    }
+
+    // Public Helpers //
+
+    pub fn unsafe_ptr_len(ptr: *const u8) u64 {
+        var i = 0 as u64;
+        while (ptr[i] != 0 as u8) {
+            i += 1 as u64;
+        }
+        return i;
+    }
 }
 
-pub fn is_alpha(c: u8) bool {
-    return ('a' <= c and c <= 'z')
-        or ('A' <= c and c <= 'Z')
-        or c == '_';
-}
+pub struct Char {
+    pub fn is_alpha(c: u32) bool {
+        return ('a' <= c and c <= 'z')
+            or ('A' <= c and c <= 'Z')
+            or c == '_';
+    }
 
-pub fn is_numeric(c: u8) bool {
-    return '0' <= c and c <= '9';
-}
+    pub fn is_numeric(c: u32) bool {
+        return '0' <= c and c <= '9';
+    }
 
-pub fn is_alphanumeric(c: u8) bool {
-    return is_alpha(c) or is_numeric(c);
+    pub fn is_alphanumeric(c: u32) bool {
+        return Char::is_alpha(c) or Char::is_numeric(c);
+    }
 }
