@@ -1,41 +1,47 @@
-use super::str::String;
+use super::str::CString;
+use super::str::CStr;
 use super::slice::Slice;
 
 // Owns the data it holds
 pub struct PathBuf {
-    data: String;
+    _inner: CString;
 
     pub fn new() PathBuf {
         var self: PathBuf = undefined;
-        self.data = String::new();
+        self._inner = CString::new();
         return self;
     }
 
     pub fn free(self: *const PathBuf) void {
-        self.data.free();
+        self._inner.free();
     }
 
-    pub fn from_slice(path: Slice[u8]) PathBuf {
+    pub fn clone(self: *const PathBuf) PathBuf {
+        return PathBuf::from_cstr(self.as_cstr());
+    }
+
+    pub fn from_cstr(path: CStr) PathBuf {
         var self: PathBuf = undefined;
-        self.data = String::from_slice(path);
+        self._inner = CString::from_cstr(path);
         return self;
     }
 
-    pub fn from_cstr(path: *const u8) PathBuf {
+    // make a PathBuf from a null terminated raw ptr
+    pub fn unsafe_from_ptr(ptr: *const u8) PathBuf {
         var self: PathBuf = undefined;
-        self.data = String::from_cstr(path);
+        self._inner = CString::from_cstr(CStr::unsafe_from_ptr(ptr));
         return self;
     }
 
     pub fn as_slice(self: *const PathBuf) Slice[u8] {
-        return self.data.as_slice();
+        return self._inner.as_slice();
     }
 
-    pub fn clone(self: *const PathBuf) PathBuf {
-        return PathBuf::from_slice(self.as_slice());
+    pub fn as_cstr(self: *const PathBuf) CStr {
+        return self._inner.as_cstr();
     }
 
-    pub fn chars(self: *const PathBuf) *const u8 {
-        return self.data.chars();
+    pub fn as_ptr(self: *const PathBuf) *const u8 {
+        return self._inner.as_ptr();
     }
 }

@@ -98,7 +98,3 @@ pub struct Slice[T] {
          @printf("-------------------------------\n");
     }
 }
-
-pub fn from_cstr(cstr: *const u8) Slice[u8] {
-    return Slice::[u8]::new(cstr, str::cstr_len(cstr));
-}

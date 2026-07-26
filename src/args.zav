@@ -1,6 +1,7 @@
 use ::std::slice::Slice;
-use ::std::str;
+use ::std::str::CStr;
 use ::std::option::Option;
+use ::std::mem;
 
 pub fn display_help() void {
     @printf("Usage: Zav [options] <source_file>\n");
@@ -18,9 +19,9 @@ pub fn display_help() void {
 }
 
 pub struct CompileSettings {
-    call_path: Slice[u8];
-    root_path: Slice[u8];
-    output_path: Slice[u8];
+    call_path: CStr;
+    root_path: CStr;
+    output_path: CStr;
     until_stage: Stage;
     display_help: bool;
 
@@ -56,9 +57,9 @@ pub struct ArgsParser {
 
     pub fn parse(self: *ArgsParser) CompileSettings {
         var settings: CompileSettings = undefined;
-        settings.call_path = Slice::[u8]::new(self.args.ptr[0], str::cstr_len(self.args.ptr[0]));
-        settings.root_path = Slice::[u8]::new(nullptr, 0 as u64);
-        settings.output_path = Slice::[u8]::new(nullptr, 0 as u64);
+        settings.call_path = CStr::unsafe_from_ptr(self.args.ptr[0]);
+        settings.root_path = CStr::unsafe_from_ptr(nullptr);
+        settings.output_path = CStr::unsafe_from_ptr(nullptr);
         settings.until_stage = Stage::None;
         settings.display_help = false;
 
@@ -93,7 +94,7 @@ pub struct ArgsParser {
 fn parse_root_path_arg(settings: *CompileSettings, args: *const Slice[*const u8], i: i64) i64 {
     if (settings.root_path.ptr == nullptr) {
         const root_path = args.ptr[i];
-        settings.root_path = Slice::[u8]::new(root_path, str::cstr_len(root_path));
+        settings.root_path = CStr::unsafe_from_ptr(root_path);
         return 1;
     }
 
@@ -107,7 +108,7 @@ fn parse_long_arg(settings: *CompileSettings, args: *const Slice[*const u8], i: 
     switch (arg[2]) {
         's' => {
             const match = "stage=";
-            if (str::nstr_eql(@len(match.*), match, &arg[2])) {
+            if (mem::eql::[u8](@len(match.*), match, &arg[2])) {
                 const stage = parse_stage(&arg[2 + @len(match.*)]);
                 if (stage.is_some() and settings.until_stage == Stage::None) {
                     settings.until_stage = stage.unwrap();
@@ -128,7 +129,7 @@ fn parse_short_arg(settings: *CompileSettings, args: *const Slice[*const u8], i:
         'o' => {
             if (i + 1 < args.len and settings.output_path.ptr == nullptr) {
                 const output_path = args.ptr[i + 1];
-                settings.output_path = Slice::[u8]::new(output_path, str::cstr_len(output_path));
+                settings.output_path = CStr::unsafe_from_ptr(output_path);
                 return 2;
             }
         }
@@ -139,14 +140,15 @@ fn parse_short_arg(settings: *CompileSettings, args: *const Slice[*const u8], i:
 }
 
 fn parse_stage(arg: *const u8) Option[Stage] {
+    const cstr_arg = CStr::unsafe_from_ptr(arg);
     switch (arg[0]) {
         'l' => switch (arg[1]) {
-            'e' => if (str::cstr_eql(arg, "lexing")) return Option::[Stage]::new_some(Stage::Lexing);
-            'i' => if (str::cstr_eql(arg, "linking")) return Option::[Stage]::new_some(Stage::Linking);
+            'e' => if (cstr_arg.unsafe_eql_ptr("lexing")) return Option::[Stage]::new_some(Stage::Lexing);
+            'i' => if (cstr_arg.unsafe_eql_ptr("linking")) return Option::[Stage]::new_some(Stage::Linking);
         }
-        'p' => if (str::cstr_eql(arg, "parsing")) return Option::[Stage]::new_some(Stage::Parsing);
-        's' => if (str::cstr_eql(arg, "semantic")) return Option::[Stage]::new_some(Stage::Semantic);
-        'a' => if (str::cstr_eql(arg, "assembling")) return Option::[Stage]::new_some(Stage::Assembling);
+        'p' => if (cstr_arg.unsafe_eql_ptr("parsing")) return Option::[Stage]::new_some(Stage::Parsing);
+        's' => if (cstr_arg.unsafe_eql_ptr("semantic")) return Option::[Stage]::new_some(Stage::Semantic);
+        'a' => if (cstr_arg.unsafe_eql_ptr("assembling")) return Option::[Stage]::new_some(Stage::Assembling);
         
     }
 
