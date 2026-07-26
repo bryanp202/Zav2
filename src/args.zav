@@ -127,7 +127,11 @@ fn parse_short_arg(settings: *CompileSettings, args: *const Slice[*const u8], i:
     const arg = args.ptr[i];
     switch (arg[1]) {
         'o' => {
-            if (i + 1 < args.len and settings.output_path.ptr == nullptr) {
+            if (
+                i + 1 < args.len
+                and settings.output_path.ptr == nullptr
+                and args.ptr[i + 1][0] != '-'
+            ) {
                 const output_path = args.ptr[i + 1];
                 settings.output_path = CStr::unsafe_from_ptr(output_path);
                 return 2;
