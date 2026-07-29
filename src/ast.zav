@@ -1,0 +1,11 @@
+pub mod error;
+pub mod lexer;
+pub mod parser;
+
+pub struct Ast {
+    _: bool;
+
+    pub fn free(self: *const Ast) void {
+        
+    }
+}

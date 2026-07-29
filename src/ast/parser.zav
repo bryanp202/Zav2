@@ -1,0 +1,132 @@
+use ::std::collections::list::List;
+use ::std::slice::Slice;
+use ::std::path::PathBuf;
+use ::std::io::IoError;
+use ::std::io::fs;
+use ::std::result::Result;
+
+use super::Ast;
+use super::lexer::Lexer;
+use super::lexer::Token;
+use super::lexer::TokenType;
+use super::error::ErrorCache;
+use super::error::Error;
+use super::error::ErrorType;
+
+pub struct ParseResult {
+    ast: Ast;
+    error_cache: ErrorCache;
+
+    pub fn free(self: *const ParseResult) void {
+        self.ast.free();
+        self.error_cache.free();
+    }
+
+    pub fn had_error(self: *const ParseResult) bool {
+        return !self.error_cache.errors.is_empty();
+    }
+}
+use ::std::fmt::Formatter;
+pub struct Parser {
+    errors: List[Error];
+    lexer: Lexer;
+    curr: Token;
+    prev: Token;
+    src: Slice[u8];
+
+    pub fn new() Parser {
+        var self: Parser = undefined;
+        self.errors = List::[Error]::new();
+        self.curr.type = TokenType::Eof;
+        self.prev.type = TokenType::Eof;
+        return self;
+    }
+
+    pub fn parse(self: *Parser, path: PathBuf) Result[ParseResult, IoError] {
+        defer path.free();
+
+        const file_contents = fs::read_file(path.as_cstr());
+        if (file_contents.is_err()) {
+            return Result::[ParseResult, IoError]::new_err(file_contents.unwrap_err());
+        }
+        const src = file_contents.unwrap_ok();
+        defer src.free();
+
+        self.src = src.as_slice();
+        self.lexer = Lexer::new(self.src);
+        self.advance();
+        return Result::[ParseResult, IoError]::new_ok(
+            self.parse_ast(path.clone()),
+        );
+    }
+
+    pub fn parse_ast(self: *Parser, path: PathBuf) ParseResult {
+        for (0..1000) |i| {
+            if (i % 100 == 0) {
+                self.error(ErrorType::ExpectedLeftParen);
+            }
+            self.advance();
+        }
+        
+
+        var result: ParseResult = undefined;
+        result.error_cache = ErrorCache::from_error_list(path, self.src, self.errors);
+        return result;
+    }
+
+    ///////////////////////
+    // Statement Parsing //
+    ///////////////////////
+
+    ////////////////////////
+    // Expression Parsing //
+    ////////////////////////
+
+    /////////////////////
+    // Private Helpers //
+    /////////////////////
+    fn error(self: *Parser, type: ErrorType) void {
+        const start = self.curr.lexeme.ptr - self.src.ptr;
+        self.errors.push(
+            Error::new(type, start as u32, self.curr.lexeme.len as u32),
+        );
+    }
+
+    fn at_end(self: *const Parser) bool {
+        return self.curr.type == TokenType::Eof;
+    }
+
+    fn check(self: *const Parser, tt: TokenType) bool {
+        return self.curr.type == tt;
+    }
+
+    fn advance_unchecked(self: *Parser) void {
+        self.prev = self.curr;
+        self.curr = self.lexer.next_token();
+    }
+
+    fn advance(self: *Parser) void {
+        self.advance_unchecked();
+        while (self.check(TokenType::Error)) {
+            // self.errors.push();
+            self.curr = self.lexer.next_token();
+        }
+    }
+
+    fn match(self: *Parser, tt: TokenType) bool {
+        if (self.check(tt)) {
+            self.advance_unchecked();
+            return true;
+        }
+        return false;
+    }
+
+    fn eat(self: *Parser, tt: TokenType, err: ErrorType) bool {
+        if (self.curr.type == tt) {
+            self.advance_unchecked();
+            return true;
+        }
+        // self.error(ParsingError::new(err));
+        return false;
+    }
+}

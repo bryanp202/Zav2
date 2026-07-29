@@ -1,5 +1,6 @@
 pub mod cmp;
 pub mod collections;
+pub mod fmt;
 pub mod hash;
 pub mod io;
 // pub mod json;

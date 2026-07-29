@@ -1,22 +1,10 @@
 pub mod std;
 pub mod args;
-//pub mod error;
-pub mod lexer;
-//pub mod parser;
+pub mod ast;
 
-use std::io::fs;
-use std::collections::hash::HashMap;
-use std::hash::SipHasher;
-use std::slice;
-use std::slice::Slice;
-use std::str::String;
-use lexer::Lexer;
-use lexer::TokenType;
-
-pub fn main(argc: i64, argv: **const u8) i64 {
+pub fn main(argc: i64, argv: **u8) i64 {
     const start = std::time::Instant::now();
     defer @printf("Time to run: %f s\n", start.elapsed().as_secs_f64());
-    channel_test();
     
     const settings = args::ArgsParser::new(argc, argv)
         .parse();
@@ -26,73 +14,18 @@ pub fn main(argc: i64, argv: **const u8) i64 {
         args::display_help();
         return 1;
     }
-    
-    const file_result = fs::read_file(settings.root_path.ptr);
-    if (file_result.is_err()) {
-        @printf("Could not open file at: \"%s\"\n", settings.root_path.ptr);
+
+    const result = ast::parser::Parser::new().parse(std::path::PathBuf::from_cstr(settings.root_path));
+    if (result.is_err()) {
         return 1;
     }
-    
-    var lexer = Lexer::new(file_result.unwrap_ok());
+    const parse_result = result.unwrap_ok();
+    defer parse_result.free();
 
-    @printf("Tokens:\n");
-    var token = lexer.next_token();
-    while (token.type != TokenType::Eof) {
-        switch (token.type) {
-            TokenType::Identifier => @printf("%.*s: identifier\n", token.lexeme.len, token.lexeme.ptr);
-            TokenType::Error => {
-                const error_at = lexer.previous_literal();
-                @printf("'%.*s': %.*s\n", error_at.len, error_at.ptr, token.lexeme.len, token.lexeme.ptr);
-                return 1;
-            }
-            else => @printf("%d: %.*s\n", token.type, token.lexeme.len, token.lexeme.ptr);
-        }
-        token = lexer.next_token();
-    }
-    @printf("TokenType::Eof\n");
+    var fmt = std::fmt::Formatter::new();
+    defer fmt.free();
+    parse_result.error_cache.fmt(&fmt);
+    fmt.print();
 
     return 0;
-}
-
-use std::thread::Thread;
-use std::sync::mpmc;
-use std::sync::mpmc::Receiver;
-
-pub fn channel_test() void {
-    const channel = mpmc::channel::[i64]();
-
-    var threads: [10]Thread[Receiver[i64], u64] = undefined;
-
-    for (0..@len(threads), &threads) |_, thread| {
-        thread.* = Thread::[Receiver[i64], u64]::new(channel_worker, channel.receiver.clone()).unwrap_ok();
-    }
-    
-    defer {
-        for (0..@len(threads), &threads) |i, thread| {
-            @printf("%d: %llu\n", i, thread.join().unwrap_ok());
-            thread.free();
-        }
-    }
-
-    defer channel.sender.free();
-    defer channel.receiver.free();
-
-    for (0..250) |i| {
-        const res = channel.sender.send(i);
-        if (res.is_err()) {
-            @printf("Failed to send: %d\n", res.unwrap_err());
-        }
-    }
-}
-
-pub fn channel_worker(receiver: Receiver[i64]) u64 {
-    defer receiver.free();
-
-    var msg = receiver.recv();
-    while (msg.is_some()) {
-        for (0..200_000_000) |_| {}
-        @printf("%d Received: %d\n", std::thread::osId(), msg.unwrap());
-    } loop msg = receiver.recv();
-
-    return std::thread::osId();
 }

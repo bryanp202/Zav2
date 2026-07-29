@@ -1,5 +1,7 @@
 use ::std::slice::Slice;
-use ::std;
+use ::std::str::Char;
+use ::std::str::CStr;
+use ::std::mem;
 
 pub struct Lexer {
     start: *const u8;
@@ -27,11 +29,11 @@ pub struct Lexer {
         var tt: TokenType = TokenType::Error;
         const c = self.advance();
 
-        if (std::str::is_alpha(c)) {
+        if (Char::is_alpha(c)) {
             return self.keyword();
         }
 
-        if (std::str::is_numeric(c)) {
+        if (Char::is_numeric(c)) {
             return self.number();
         }
 
@@ -171,8 +173,8 @@ pub struct Lexer {
 
     fn try_keyword(self: *Lexer, tt: TokenType, len: u64, rem: *const u8) Token {
         if (self.curr + len <= self.end
-            and (self.end == self.curr + len or !std::str::is_alphanumeric(self.curr[len]))
-            and std::mem::eql::[u8](len, self.curr, rem)) {
+            and (self.end == self.curr + len or !Char::is_alphanumeric(self.curr[len]))
+            and mem::eql::[u8](len, self.curr, rem)) {
             self.curr += (len as *u8);
             return self.emit_token(tt);
         }
@@ -180,7 +182,7 @@ pub struct Lexer {
     }
 
     fn identifier(self: *Lexer) Token {
-        while (!self.at_end() and std::str::is_alphanumeric(self.peek())) {
+        while (!self.at_end() and Char::is_alphanumeric(self.peek())) {
             self.advance();
         }
 
@@ -188,9 +190,9 @@ pub struct Lexer {
     }
 
     fn native(self: *Lexer) Token {
-        const error = self.at_end() or !std::str::is_alpha(self.peek());
+        const error = self.at_end() or !Char::is_alpha(self.peek());
 
-        while (!self.at_end() and std::str::is_alphanumeric(self.peek())) {
+        while (!self.at_end() and Char::is_alphanumeric(self.peek())) {
             self.advance();
         }
 
@@ -233,14 +235,14 @@ pub struct Lexer {
         var tt = TokenType::Integer;
         var error = self.parse_integer();
 
-        if (self.peek() == '.' and (std::str::is_numeric(self.peek_next()) or self.peek_next() == '_')) {
+        if (self.peek() == '.' and (Char::is_numeric(self.peek_next()) or self.peek_next() == '_')) {
             self.advance();
 
             error |= self.parse_integer();
 
             if (self.match('e')) {
                 self.match('+') or self.match('-');
-                if (!(std::str::is_numeric(self.peek()) or self.peek() == '_')) {
+                if (!(Char::is_numeric(self.peek()) or self.peek() == '_')) {
                     return self.error("invalid floating point scientific notation");
                 }
                 error |= self.parse_integer();
@@ -249,7 +251,7 @@ pub struct Lexer {
             tt = TokenType::Float;
         } else if (self.match('e')) {
             self.match('+') or self.match('-');
-            if (!(std::str::is_numeric(self.peek()) or self.peek() == '_')) {
+            if (!(Char::is_numeric(self.peek()) or self.peek() == '_')) {
                 return self.error("invalid floating point scientific notation");
             }
             error |= self.parse_integer();
@@ -266,7 +268,7 @@ pub struct Lexer {
     fn parse_integer(self: *Lexer) bool {
         var previous = self.previous();
         var error = false;
-        while (std::str::is_numeric(self.peek()) or self.peek() == '_') {
+        while (Char::is_numeric(self.peek()) or self.peek() == '_') {
             error |= self.peek() == '_' and previous == '_';
             previous = self.advance();
         }
@@ -281,7 +283,7 @@ pub struct Lexer {
 
     fn error(self: *const Lexer, err: *const u8) Token {
         var token: Token = undefined;
-        token.lexeme = Slice::[u8]::new(err, std::str::cstr_len(err));
+        token.lexeme = CStr::unsafe_from_ptr(err).as_slice();
         token.type = TokenType::Error;
         return token;
     }
@@ -489,5 +491,5 @@ pub enum TokenType {
     While,
 
     Error,
-    Eof
+    Eof,
 }

@@ -3,6 +3,7 @@ use super::mem;
 use super::hash;
 use super::str;
 use super::fmt::Formatter;
+use super::cmp::Ordering;
 
 pub struct SplitIterator[T] {
     curr: *const T;
@@ -117,10 +118,10 @@ pub struct Slice[T] {
         }
     }
 
-     pub fn debug(self: *const Slice[T]) void {
-         @printf("-------------------------------\n");
-         @printf("Slice: len: %d, ptr: %d\n", self.len, self.ptr);
-         for (0..self.len, self.ptr) |_, item| {
+    pub fn debug(self: *const Slice[T]) void {
+        @printf("-------------------------------\n");
+        @printf("Slice: len: %d, ptr: %d\n", self.len, self.ptr);
+        for (0..self.len, self.ptr) |_, item| {
             compif (T::debug) {
                 item.debug();
             } else {
@@ -130,7 +131,7 @@ pub struct Slice[T] {
                 }
             }
             @printf("\n");
-         }
-         @printf("-------------------------------\n");
+        }
+        @printf("-------------------------------\n");
     }
 }

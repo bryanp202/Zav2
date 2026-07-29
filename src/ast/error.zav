@@ -1,0 +1,318 @@
+use ::std::collections::list::List;
+use ::std::path::PathBuf;
+use ::std::str::String;
+use ::std::str::CStr;
+use ::std::slice::Slice;
+use ::std::fmt::Formatter;
+
+pub enum ErrorType {
+    ExpectedLeftParen,
+    ExpectedRightParen,
+}
+
+pub struct Span[T] {
+    start: T;
+    len: T;
+
+    pub fn new(start: T, len: T) Span[T] {
+        var self: Span[T] = undefined;
+        self.start = start;
+        self.len = len;
+        return self;
+    }
+
+    pub fn eql(self: *const Span[T], other: *const Span[T]) bool {
+        return self.start == other.start and self.len == other.len;
+    }
+}
+
+pub struct Error {
+    type: ErrorType;
+    span: Span[u32];
+
+    pub fn new(type: ErrorType, start: u32, len: u32) Error {
+        var self: Error = undefined;
+        self.type = type;
+        self.span = Span::[u32]::new(start, len);
+        return self;
+    }
+
+    pub fn eql(self: *const Error, other: *const Error) bool {
+        return self.type == other.type;
+    }
+}
+
+pub struct CachedError {
+    type: ErrorType;
+    line: u32;
+    col: u32;
+    span: Span[u32];
+    src: Span[u32];
+
+    pub fn eql(self: *const CachedError, other: *const CachedError) bool {
+        return self.type == other.type;
+    }
+
+    pub fn fmt(self: *const CachedError, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("error: [STX");
+        fmt.uint(self.type as u64);
+        fmt.unsafe_cstr_ptr("] ");
+        var msg: *const u8 = nullptr; 
+        switch (self.type) {
+            ErrorType::ExpectedLeftParen => msg = "expected '('";
+            ErrorType::ExpectedRightParen => msg = "expected ')'";
+        }
+        fmt.unsafe_cstr_ptr(msg);
+        fmt.newline();
+    }
+}
+
+pub struct ErrorCache {
+    errors: List[CachedError];
+    cache: String;
+    path: PathBuf;
+
+    pub fn free(self: *const ErrorCache) void {
+        self.errors.free();
+        self.cache.free();
+        self.path.free();
+    }
+
+    pub fn from_error_list(
+        path: PathBuf,
+        src: Slice[u8],
+        errors: List[Error],
+    ) ErrorCache {
+        defer errors.free();
+
+        var self: ErrorCache = undefined;
+        self.errors = List::[CachedError]::new();
+        self.cache = String::new();
+        self.path = path;
+
+        var lines_cache = List::[u32]::new();
+        defer lines_cache.free();
+        {
+            var lines_iter = src.split(|c: *u8| -> bool c.* == 10);
+            var line = lines_iter.next();
+            while (line.is_some()) {
+                const line_offset = (line.unwrap().ptr - src.ptr) as u32;
+                lines_cache.push(line_offset);
+            } loop line = lines_iter.next();
+        }
+        
+
+        for (0..errors.len, errors.items) |i, err| {
+            const start_line = ErrorCache::find_line_in_cache(lines_cache.as_slice(), err.span.start);
+            const end_line = ErrorCache::find_line_in_cache(lines_cache.as_slice(), err.span.start + err.span.len);
+            const start = lines_cache.items[start_line - 1];
+            const column = err.span.start - start + 1 as u32;
+
+            const end = end_line < lines_cache.len
+                ? lines_cache.items[end_line] - 1 as u64
+                : src.len;
+            const src_slice = Slice::[u8]::new(&src.ptr[start], end - start);
+            const src_span = Span::[u32]::new(self.cache.len as u32, src_slice.len as u32);
+            const span = Span::[u32]::new(self.cache.len as u32 + column - 1 as u32, err.span.len);
+            self.cache.append(src_slice);
+
+            var cached_error: CachedError = undefined;
+            cached_error.line = start_line;
+            cached_error.col = column;
+            cached_error.src = src_span;
+            cached_error.span = span;
+            cached_error.type = err.type;
+            self.errors.push(cached_error);
+        }
+        return self;
+    }
+
+    pub fn had_error(self: *const ErrorCache) bool {
+        return !self.errors.is_empty();
+    }
+
+    pub fn fmt(self: *const ErrorCache, fmt: *Formatter) void {
+        for (0..self.errors.len, self.errors.items) |_, err| {
+            err.fmt(fmt);
+
+            fmt.unsafe_cstr_ptr(" --> ");
+            self.path.fmt(fmt);
+            fmt.unsafe_cstr_ptr(":");
+            fmt.uint(err.line);
+            fmt.unsafe_cstr_ptr(":");
+            fmt.uint(err.col);
+            fmt.newline();
+
+            ErrorCache::print_error_lines(self.cache.as_ptr(), fmt, err);
+        }
+    }
+
+    // Private Helpers //
+    fn print_error_lines(cache: *const u8, fmt: *Formatter, err: *const CachedError) void {
+        const src = Slice::[u8]::new(
+            &cache[err.src.start],
+            err.src.len,
+        );
+
+        var line_count = 0;
+        var error_lines: [4]ErrorLine = undefined;
+        var lines_iter = src.split(|c: *u8| -> bool c.* == 10);
+
+        var maybe_line = lines_iter.next();
+        var curr_line_num = err.line;
+        while (maybe_line.is_some()) {
+            if (line_count == @len(error_lines)) {
+                error_lines[line_count - 2] = error_lines[line_count - 1];
+            } else {
+                line_count += 1;
+            }
+            var curr_line = maybe_line.unwrap();
+            if (curr_line.len > 0 as u64 and curr_line.ptr[curr_line.len - 1] == 13) {
+                curr_line.len -= 1 as u64; // remove '\r'
+            }
+            error_lines[line_count - 1] = ErrorLine::new(
+                curr_line,
+                line_count == 1
+                    ? Span::[u32]::new(err.col, curr_line.len as u32)
+                    : Span::[u32]::new(0 as u32, curr_line.len as u32),
+                curr_line_num,
+            );
+        } loop {
+            maybe_line = lines_iter.next();
+            curr_line_num += 1 as u32;
+        }
+        error_lines[line_count - 1].span.len = (err.col + err.span.len as u32 - error_lines[line_count - 1].src.ptr + src.ptr) as u32;
+        error_lines[line_count - 1].span.len -= error_lines[line_count - 1].span.start;
+        
+        if (line_count == 1) {
+            error_lines[0].fmt_single_line(fmt);
+        } else {
+            const max_line_width = @log(error_lines[line_count - 1].line) as u64;
+            error_lines[0].fmt_first_line(fmt, max_line_width);
+            for (1..line_count - 1, &error_lines[1]) |i, error_line| {
+                error_line.fmt_middle_line(fmt, max_line_width);
+                
+                // add ... if there is a skip
+                if (error_line.line + 1 as u64 != error_lines[i + 1].line) {
+                    fmt.unsafe_cstr_ptr("...");
+                    for (0..max_line_width + 1) |_| {
+                        fmt.unsafe_cstr_ptr(" ");
+                    }
+                    fmt.unsafe_cstr_ptr("|");
+                    fmt.newline();
+                }
+            }
+            error_lines[line_count - 1].fmt_last_line(fmt, max_line_width);
+        }
+        fmt.newline();
+    }
+
+    fn find_line_in_cache(cache: Slice[u32], start: u32) u32 {
+        var bottom = 0 as u32;
+        var top = cache.len as u32;
+
+        while (true) {
+            const line = (top + bottom) / 2 as u32;
+            const curr_start = cache.ptr[line];
+            const curr_end = line + 1 as u64 < cache.len
+                ? cache.ptr[line + 1]
+                : 4294967295;
+
+            if (start < curr_start) {
+                top = line - 1 as u32;
+            } else if (curr_end <= start) {
+                bottom = line + 1 as u32;
+            } else {
+                return line + 1 as u32;
+            }
+        }
+    }
+}
+
+struct ErrorLine {
+    src: Slice[u8];
+    span: Span[u32];
+    line: u32;
+
+    pub fn new(src: Slice[u8], span: Span[u32], line: u32) ErrorLine {
+        var self: ErrorLine = undefined;
+        self.src = src;
+        self.span = span;
+        self.line = line;
+        return self;
+    }
+
+    pub fn fmt_single_line(self: *const ErrorLine, fmt: *Formatter) void {
+        fmt.uint(self.line);
+        fmt.unsafe_cstr_ptr(" ");
+        fmt.unsafe_cstr_ptr("| ");
+        fmt.slice(self.src);
+        fmt.newline();
+
+        const spaces = @floor(@log(self.line)) as u64 + 2 as u64;
+        for (0..spaces) |_| {
+            fmt.unsafe_cstr_ptr(" ");
+        }
+        fmt.unsafe_cstr_ptr("| ");
+        for (1..self.span.start) |_| {
+            fmt.unsafe_cstr_ptr(" ");
+        }
+        for (0..self.span.len) |_| {
+            fmt.unsafe_cstr_ptr("^");
+        }
+        fmt.newline();
+    }
+
+    pub fn fmt_first_line(self: *const ErrorLine, fmt: *Formatter, max_line_width: u64) void {
+        fmt.uint(self.line);
+        const spaces = max_line_width - @floor(@log(self.line)) as u64 + 1 as u64;
+        for (0..spaces) |_| {
+            fmt.unsafe_cstr_ptr(" ");
+        }
+        fmt.unsafe_cstr_ptr("|   ");
+        fmt.slice(self.src);
+        fmt.newline();
+
+        for (0..max_line_width + 2) |_| {
+            fmt.unsafe_cstr_ptr(" ");
+        }
+        fmt.unsafe_cstr_ptr("|  ");
+        for (0..self.span.start) |_| {
+            fmt.unsafe_cstr_ptr("_");
+        }
+        fmt.unsafe_cstr_ptr("^");
+        fmt.newline();
+    }
+
+    pub fn fmt_middle_line(self: *const ErrorLine, fmt: *Formatter, max_line_width: u64) void {
+        fmt.uint(self.line);
+        const spaces = max_line_width - @floor(@log(self.line)) as u64 + 1 as u64;
+        for (0..spaces) |_| {
+            fmt.unsafe_cstr_ptr(" ");
+        }
+        fmt.unsafe_cstr_ptr("| | ");
+        fmt.slice(self.src);
+        fmt.newline();
+    }
+
+    pub fn fmt_last_line(self: *const ErrorLine, fmt: *Formatter, max_line_width: u64) void {
+        fmt.uint(self.line);
+        const spaces = max_line_width - @floor(@log(self.line)) as u64 + 1 as u64;
+        for (0..spaces) |_| {
+            fmt.unsafe_cstr_ptr(" ");
+        }
+        fmt.unsafe_cstr_ptr("| | ");
+        fmt.slice(self.src);
+        fmt.newline();
+
+        for (0..max_line_width + 2) |_| {
+            fmt.unsafe_cstr_ptr(" ");
+        }
+        fmt.unsafe_cstr_ptr("  |");
+        for (0..self.span.len) |_| {
+            fmt.unsafe_cstr_ptr("_");
+        }
+        fmt.unsafe_cstr_ptr("^");
+        fmt.newline();
+    }
+}

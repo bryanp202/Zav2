@@ -67,10 +67,10 @@ pub struct String {
     }
 
     pub fn append(self: *String, slice: Slice[u8]) void {
-        if (self.len + slice.len > self.capacity) {
+        if (self.len + slice.len >= self.capacity) {
             self.resize(slice.len);
         }
-
+        
         mem::cpy::[u8](slice.len, &self.bytes[self.len], slice.ptr);
         self.len += slice.len;
     }
@@ -79,15 +79,12 @@ pub struct String {
         return self.append(cstr.as_slice());
     }
 
-    pub fn debug(self: *const String) void {
-        @printf("\"%.*s\"", self.len, self.bytes);
-    }
-
     /* PRIVATE HELPERS */
 
     fn resize(self: *String, append_len: u64) void {
         const old_capacity = self.capacity;
         const old_bytes = self.bytes;
+        nullptr;
         self.capacity = self.capacity != 0 as u64
             ? max::[u64](self.capacity * 2 as u64, self.capacity + append_len)
             : max::[u64](append_len, 8 as u64);
@@ -163,7 +160,7 @@ pub struct CString {
     pub fn as_cstr(self: *const CString) CStr {
         var cstr: CStr = undefined;
         cstr.ptr = self.bytes;
-        cstr.len = self.len;
+        cstr.len = self.len - 1 as u64;
         return cstr;
     }
 

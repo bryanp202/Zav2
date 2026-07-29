@@ -86,7 +86,7 @@ pub struct List[T] {
     }
 
     pub fn push(self: *List[T], item: T) void {
-        if (self.len >= self.capacity) {
+        if (self.len == self.capacity) {
             self.resize(1 as u64);
         }
         self.items[self.len] = item;
@@ -94,7 +94,7 @@ pub struct List[T] {
     }
 
     pub fn push_slice(self: *List[T], slice: Slice[T]) void {
-        if (self.len + slice.len > self.capacity) {
+        if (self.len + slice.len >= self.capacity) {
             self.resize(slice.len);
         }
         for (self.len..self.len+slice.len, slice.ptr) |i, item| {
@@ -113,7 +113,7 @@ pub struct List[T] {
 
     /// Invalid to call on out of bounds index
     pub fn insert(self: *List[T], index: u64, item: T) void {
-        if (self.len >= self.capacity) {
+        if (self.len == self.capacity) {
             self.resize_with_gap(1 as u64, index);
             self.items[index] = item;
         } else {

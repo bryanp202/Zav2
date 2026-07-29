@@ -1,6 +1,7 @@
 use super::str::CString;
 use super::str::CStr;
 use super::slice::Slice;
+use super::fmt::Formatter;
 
 // Owns the data it holds
 pub struct PathBuf {
@@ -18,6 +19,10 @@ pub struct PathBuf {
 
     pub fn clone(self: *const PathBuf) PathBuf {
         return PathBuf::from_cstr(self.as_cstr());
+    }
+
+    pub fn fmt(self: *const PathBuf, fmt: *Formatter) void {
+        fmt.slice(self.as_slice());
     }
 
     pub fn from_cstr(path: CStr) PathBuf {
