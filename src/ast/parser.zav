@@ -61,12 +61,12 @@ pub struct Parser {
     }
 
     pub fn parse_ast(self: *Parser, path: PathBuf) ParseResult {
-        for (0..1000) |i| {
-            if (i % 100 == 0) {
-                self.error(ErrorType::ExpectedLeftParen);
-            }
+        for (0..10) |i| {
+            self.error(ErrorType::ExpectedLeftParen);
             self.advance();
         }
+        self.errors.items[0].span.start += 4 as u8;
+        self.errors.items[0].span.len += 32 as u8;
         
 
         var result: ParseResult = undefined;

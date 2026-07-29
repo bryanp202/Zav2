@@ -22,7 +22,7 @@ pub fn main(argc: i64, argv: **u8) i64 {
     const parse_result = result.unwrap_ok();
     defer parse_result.free();
 
-    var fmt = std::fmt::Formatter::new();
+    var fmt = std::fmt::Formatter::new_for_terminal();
     defer fmt.free();
     parse_result.error_cache.fmt(&fmt);
     fmt.print();

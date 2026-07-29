@@ -4,10 +4,19 @@ use super::str::CStr;
 
 pub struct Formatter {
     buf: String;
+    terminal_output: bool;
 
     pub fn new() Formatter {
         var self: Formatter = undefined;
         self.buf = String::new();
+        self.terminal_output = false;
+        return self;
+    }
+
+    pub fn new_for_terminal() Formatter {
+        var self: Formatter = undefined;
+        self.buf = String::new();
+        self.terminal_output = true;
         return self;
     }
 
@@ -108,4 +117,73 @@ pub struct Formatter {
             return "unsupported type";
         }
     }
+
+    pub fn bold(self: *Formatter) void {
+        if (!self.terminal_output) {
+            return;
+        }
+
+        var escape: [4]u8 = undefined;
+        escape[0] = 27 as u8;
+        escape[1] = '[';
+        escape[2] = '1';
+        escape[3] = 'm';
+        self.buf.append(Slice::[u8]::new(&escape, @len(escape)));
+    }
+
+    pub fn reset_attributes(self: *Formatter) void {
+        if (!self.terminal_output) {
+            return;
+        }
+
+        var escape: [4]u8 = undefined;
+        escape[0] = 27 as u8;
+        escape[1] = '[';
+        escape[2] = '0';
+        escape[3] = 'm';
+        self.buf.append(Slice::[u8]::new(&escape, @len(escape)));
+    }
+
+    pub fn set_fg_color(self: *Formatter, color: TextColor) void {
+        if (!self.terminal_output) {
+            return;
+        }
+
+        var escape: [5]u8 = undefined;
+        escape[0] = 27 as u8;
+        escape[1] = '[';
+        escape[2] = color < TextColor::BrightBlack ? '3' : '9';
+        escape[3] = '0' + (color < TextColor::BrightBlack ? color as u8 : color as u8 - 8 as u8);
+        escape[4] = 'm';
+        self.buf.append(Slice::[u8]::new(&escape, @len(escape)));
+    }
+
+    pub fn reset_fg_color(self: *Formatter) void {
+        var escape: [5]u8 = undefined;
+        escape[0] = 27 as u8;
+        escape[1] = '[';
+        escape[2] = '3';
+        escape[3] = '9';
+        escape[4] = 'm';
+        self.buf.append(Slice::[u8]::new(&escape, @len(escape)));
+    }
+}
+
+pub enum TextColor {
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    White,
+    BrightBlack,
+    BrightRed,
+    BrightGreen,
+    BryightYellow,
+    BrightBlue,
+    BrightMagenta,
+    BrightCyan,
+    BrightWhite,
 }
