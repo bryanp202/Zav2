@@ -4,18 +4,26 @@ use ::std::option::Option;
 use ::std::mem;
 
 pub fn display_help() void {
-    @printf("Usage: Zav [options] <source_file>\n");
-    @printf("\n");
-    @printf("Options:\n");
-    @printf("  -s, --emit-asm          Emit assembly files for each module\n");
-    @printf("  -d, --show-ast          Display Abstract Syntax Tree (AST) during compilation\n");
-    @printf("  -o <file>               Specify output file name (default is 'out.exe')\n");
-    @printf("  -h, --help              Display this help message\n");
-    @printf("\n");
-    @printf("Example:\n");
-    @printf("  Zav -s -o splicer.exe ./src/main.zav    # Output assembly and specify output file 'splicer.exe'\n");
-    @printf("  Zav -d splicer.zav                      # Display the AST for each module and compile to default 'out.exe'\n");
-    @printf("\n");
+    var fmt = ::std::fmt::Formatter::new();
+    fmt.unsafe_cstr_ptr("Usage: Zav [options] <source_file>\n");
+    fmt.newline();
+    fmt.unsafe_cstr_ptr("Options:\n");
+    fmt.unsafe_cstr_ptr("  --stage                Toggle which stage to stop terminate compilation\n");
+    fmt.unsafe_cstr_ptr("         =lexing              Stop after tokenizing source files\n");
+    fmt.unsafe_cstr_ptr("         =parsing             Stop after parsing source files to ast\n");
+    fmt.unsafe_cstr_ptr("         =semantic            Stop after name-resolution and type checking\n");
+    fmt.unsafe_cstr_ptr("         =assembling          Stop after assembling\n");
+    fmt.unsafe_cstr_ptr("         =linking             Stop after linking to an executable\n");
+    fmt.unsafe_cstr_ptr("  -s, --emit-asm          Emit assembly files for each module\n");
+    fmt.unsafe_cstr_ptr("  -d, --show-ast          Display Abstract Syntax Tree (AST) during compilation\n");
+    fmt.unsafe_cstr_ptr("  -o <file>               Specify output file name (default is 'out.exe')\n");
+    fmt.unsafe_cstr_ptr("  -h, --help              Display this help message\n");
+    fmt.newline();
+    fmt.unsafe_cstr_ptr("Example:\n");
+    fmt.unsafe_cstr_ptr("  Zav -s -o splicer.exe ./src/main.zav    # Output assembly and specify output file 'splicer.exe'\n");
+    fmt.unsafe_cstr_ptr("  Zav -d splicer.zav                      # Display the AST for each module and compile to default 'out.exe'\n");
+    fmt.newline();
+    fmt.print();
 }
 
 pub struct CompileSettings {
@@ -26,14 +34,26 @@ pub struct CompileSettings {
     display_help: bool;
 
     pub fn debug(self: *const CompileSettings) void {
-        @printf("-----------------------------------------\n");
-        @printf("CompileSettings:\n");
-        @printf("call_path: %.*s\n", self.call_path.len, self.call_path.ptr);
-        @printf("root_path: %.*s\n", self.root_path.len, self.root_path.ptr);
-        @printf("output_path: %.*s\n", self.output_path.len, self.output_path.ptr);
-        @printf("until_stage: %d\n", self.until_stage);
-        @printf("display_help: %d\n", self.display_help);
-        @printf("-----------------------------------------\n");
+        var fmt = ::std::fmt::Formatter::new();
+        fmt.unsafe_cstr_ptr("-----------------------------------------\n");
+        fmt.unsafe_cstr_ptr("CompileSettings:\n");
+        fmt.unsafe_cstr_ptr("call_path: ");
+        fmt.cstr(self.call_path);
+        fmt.newline();
+        fmt.unsafe_cstr_ptr("root_path: ");
+        fmt.cstr(self.root_path);
+        fmt.newline();
+        fmt.unsafe_cstr_ptr("output_path: ");
+        fmt.cstr(self.output_path);
+        fmt.newline();
+        fmt.unsafe_cstr_ptr("until_stage: ");
+        fmt.uint(self.until_stage as u64);
+        fmt.newline();
+        fmt.unsafe_cstr_ptr("display_help: ");
+        fmt.boolean(self.display_help);
+        fmt.newline();
+        fmt.unsafe_cstr_ptr("-----------------------------------------\n");
+        fmt.print();
     }
 }
 
