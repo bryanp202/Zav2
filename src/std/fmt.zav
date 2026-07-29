@@ -1,0 +1,111 @@
+use super::slice::Slice;
+use super::str::String;
+use super::str::CStr;
+
+pub struct Formatter {
+    buf: String;
+
+    pub fn new() Formatter {
+        var self: Formatter = undefined;
+        self.buf = String::new();
+        return self;
+    }
+
+    pub fn free(self: *const Formatter) void {
+        self.buf.free();
+    }
+
+    pub fn print(self: *const Formatter) void {
+        const slice = self.buf.as_slice();
+        @printf("%.*s", slice.len, slice.ptr);
+    }
+
+    pub fn as_slice(self: *const Formatter) Slice[u8] {
+        return self.buf.as_slice();
+    }
+
+    pub fn newline(self: *Formatter) void {
+        self.buf.append_cstr(CStr::unsafe_from_ptr("\n"));
+    }
+
+    pub fn slice(self: *Formatter, slice: Slice[u8]) void {
+        self.buf.append(slice);
+    }
+
+    pub fn cstr(self: *Formatter, cstr: CStr) void {
+        self.buf.append_cstr(cstr);
+    }
+
+    pub fn boolean(self: *Formatter, boolean: bool) void {
+        const cstr = boolean
+            ? CStr::unsafe_from_ptr("true")
+            : CStr::unsafe_from_ptr("false");
+        self.cstr(cstr);
+    }
+
+    pub fn uint(self: *Formatter, uint: u64) void {
+        var buf: [20]u8 = undefined;
+        const len = @sprintf(&buf, "%llu", uint);
+        self.buf.append(Slice::[u8]::new(&buf, len));
+    }
+
+    pub fn int(self: *Formatter, int: i64) void {
+        var buf: [20]u8 = undefined;
+        const len = @sprintf(&buf, "%lld", int);
+        self.buf.append(Slice::[u8]::new(&buf, len));
+    }
+
+    pub fn float(self: *Formatter, float: f64) void {
+        var buf: [20]u8 = undefined;
+        const len = @sprintf(&buf, "%f", float);
+        self.buf.append(Slice::[u8]::new(&buf, len));
+    }
+
+    pub fn unsafe_cstr_ptr(self: *Formatter, cstr_ptr: *const u8) void {
+        self.buf.append_cstr(CStr::unsafe_from_ptr(cstr_ptr));
+    }
+
+    /// Works for types that has `T::fmt` and the following primatives:
+    /// - void
+    /// - pointers
+    /// - bool
+    /// - u[8, 16, 32, 64]
+    /// - i[8, 16, 32, 64]
+    /// - f[32, 64]
+    ///
+    pub fn [T] format(self: *Formatter, item: *const T) void {
+        compif (T::fmt) {
+            item.fmt(self);
+        } else compif (item.*.*: u8) {
+            self.unsafe_cstr_ptr(item.*);
+        } else compif (item.*.*) {
+            self.uint(item.* as u64);
+        } else compif (item.*: bool) {
+            self.boolean(item.*);
+        } else compif (item.*: u8) {
+            self.uint(item.*);
+        } else compif (item.*: u16) {
+            self.uint(item.*);
+        } else compif (item.*: u32) {
+            self.uint(item.*);
+        } else compif (item.*: u64) {
+            self.uint(item.*);
+        } else compif (item.*: i8) {
+            self.int(item.*);
+        } else compif (item.*: i16) {
+            self.int(item.*);
+        } else compif (item.*: i32) {
+            self.int(item.*);
+        } else compif (item.*: i64) {
+            self.int(item.*);
+        } else compif (item.*: f32) {
+            self.float(item.*);
+        } else compif (item.*: f64) {
+            self.float(item.*);
+        } else compif (item.*: void) {
+            self.unsafe_cstr_ptr("void");
+        } else {
+            return "unsupported type";
+        }
+    }
+}

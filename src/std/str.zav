@@ -1,6 +1,7 @@
 use super::slice::Slice;
 use super::mem;
 use super::math::max;
+use super::fmt::Formatter;
 
 /// A mutatable string
 /// Owns the data it holds
@@ -38,6 +39,10 @@ pub struct String {
     pub fn [H] hash(self: *const String, hasher: *const H) u64 {
         return hasher.hash_one(self.bytes, self.len);
     }
+
+    pub fn fmt(self: *const String, fmt: *Formatter) void {
+        fmt.slice(self.as_slice());
+    } 
 
     pub fn from_slice(slice: Slice[u8]) String {
         var self: String = undefined;
@@ -128,6 +133,10 @@ pub struct CString {
         return hasher.hash_one(self.bytes, self.len);
     }
 
+    pub fn fmt(self: *const CString, fmt: *Formatter) void {
+        fmt.cstr(self.as_cstr());
+    } 
+
     pub fn from_slice(slice: Slice[u8]) CString {
         var self: CString = undefined;
         self.capacity = slice.len + 1 as u64;
@@ -215,6 +224,10 @@ pub struct CStr {
     pub fn [H] hash(self: *const CStr, hasher: *const H) u64 {
         return hasher.hash_one(self.ptr, self.len);
     }
+
+    pub fn fmt(self: *const CStr, fmt: *Formatter) void {
+        fmt.cstr(self.*);
+    } 
 
     pub fn as_slice(self: *const CStr) Slice[u8] {
         return Slice::[u8]::new(self.ptr, self.len);

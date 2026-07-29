@@ -2,6 +2,7 @@ use super::option::Option;
 use super::mem;
 use super::hash;
 use super::str;
+use super::fmt::Formatter;
 
 pub struct SplitIterator[T] {
     curr: *const T;
@@ -83,6 +84,37 @@ pub struct Slice[T] {
 
     pub fn [H] hash(self: *const Slice[T], hasher: *const H) u64 {
         return hasher.hash_one(self.ptr as *const u8, self.len);
+    }
+
+    pub fn fmt(self: *const Slice[T], fmt: *Formatter) void {
+        if (self.len == 0 as u64) {
+            fmt.unsafe_cstr_ptr("[]");
+            return;
+        }
+
+        compif (T: u8) {
+            fmt.slice(self.*);
+        } else compif (Formatter::format::[T]) {
+            fmt.unsafe_cstr_ptr("[");
+            Formatter::format::[T](fmt, &self.ptr[0]);
+            for (1..self.len, &self.ptr[1]) |_, item| {
+                fmt.unsafe_cstr_ptr(", ");
+                Formatter::format::[T](fmt, item);
+            }
+            fmt.unsafe_cstr_ptr("]");
+        } else {
+            fmt.unsafe_cstr_ptr("[");
+            fmt.unsafe_cstr_ptr("UserKind(");
+            fmt.uint(@sizeof(nullptr as T));
+            fmt.unsafe_cstr_ptr(" bytes)");
+            for (1..self.len, &self.ptr[1]) |_, item| {
+                fmt.unsafe_cstr_ptr(", ");
+                fmt.unsafe_cstr_ptr("UserKind(");
+                fmt.uint(@sizeof(nullptr as T));
+                fmt.unsafe_cstr_ptr(" bytes)");
+            }
+            fmt.unsafe_cstr_ptr("]");
+        }
     }
 
      pub fn debug(self: *const Slice[T]) void {
