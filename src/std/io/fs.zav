@@ -85,21 +85,20 @@ pub fn read_file(path: CStr) Result[String, IoError] {
         return Result::[String, IoError]::new_err(IoError::FileEmpty);
     }
 
-    const file_buf = @malloc(file_len) as *u8;
-    if (file_buf == nullptr) {
+    var file_buf = String::with_capacity(file_len);
+    if (file_buf.bytes == nullptr) {
         return Result::[String, IoError]::new_err(IoError::OutOfMemory);
     }
 
     var bytes_read: u64 = 0 as u64;
-    const read_success = @fread(file, file_buf, file_len, &bytes_read);
+    const read_success = @fread(file, file_buf.bytes, file_len, &bytes_read);
     if (!read_success or bytes_read != file_len) {
-        @free(file_buf);
+        file_buf.free();
         return Result::[String, IoError]::new_err(IoError::FailedToRead);
     }
+    file_buf.len += bytes_read;
 
-    return Result::[String, IoError]::new_ok(
-        String::from_slice(Slice::[u8]::new(file_buf, bytes_read))
-    );
+    return Result::[String, IoError]::new_ok(file_buf);
 }
 
 pub fn read_bytes(path: *const u8) Result[Bytes, IoError] {

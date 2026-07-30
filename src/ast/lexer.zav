@@ -215,7 +215,7 @@ pub struct Lexer {
         if (self.at_end() or self.check(10 as u8)) {
             // Remove trailing '\r'
             self.curr -= (curr == 13) as *const u8;
-            return self.error(ErrorType::UnclosedStringLiteral);
+            return self.error(ErrorType::UnterminatedStringLiteral);
         }
         self.advance();
 
@@ -328,7 +328,7 @@ pub struct Lexer {
                             self.advance();
                         }
                         if (error) {
-                            return Result::[void, ErrorType]::new_err(ErrorType::UnclosedBlockComment);
+                            return Result::[void, ErrorType]::new_err(ErrorType::UnterminatedBlockComment);
                         }
                     }
                     continue;

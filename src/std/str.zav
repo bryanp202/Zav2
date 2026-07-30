@@ -18,6 +18,14 @@ pub struct String {
         return self;
     }
 
+    pub fn with_capacity(capacity: u64) String {
+        var self: String = undefined;
+        self.capacity = capacity;
+        self.bytes = @malloc(self.capacity) as *u8;
+        self.len = 0 as u64;
+        return self;
+    }
+
     pub fn free(self: *const String) void {
         @free(self.bytes);
     }
@@ -42,12 +50,12 @@ pub struct String {
 
     pub fn fmt(self: *const String, fmt: *Formatter) void {
         fmt.slice(self.as_slice());
-    } 
+    }
 
     pub fn from_slice(slice: Slice[u8]) String {
         var self: String = undefined;
         self.capacity = slice.len;
-        self.len = self.capacity;
+        self.len = slice.len;
         self.bytes = @malloc(self.capacity) as *u8;
         mem::cpy::[u8](slice.len, self.bytes, slice.ptr);
         return self;
@@ -108,6 +116,15 @@ pub struct CString {
         return self;
     }
 
+    pub fn with_capacity(capacity: u64) String {
+        var self: String = undefined;
+        self.capacity = max::[u64](8 as u64, capacity + 1 as u64);
+        self.len = 1 as u64;
+        self.bytes = @malloc(self.capacity) as *u8;
+        self.bytes[0] = 0 as u8;
+        return self;
+    }
+
     pub fn free(self: *const CString) void {
         @free(self.bytes);
     }
@@ -132,7 +149,7 @@ pub struct CString {
 
     pub fn fmt(self: *const CString, fmt: *Formatter) void {
         fmt.cstr(self.as_cstr());
-    } 
+    }
 
     pub fn from_slice(slice: Slice[u8]) CString {
         var self: CString = undefined;

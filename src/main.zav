@@ -15,7 +15,15 @@ pub fn main(argc: i64, argv: **u8) i64 {
         return 1;
     }
 
-    const result = ast::parser::Parser::new().parse(std::path::PathBuf::from_cstr(settings.root_path));
+    for (0..100_000) |_| {
+        test(&settings);
+    }
+
+    return 0;
+}
+use args::CompileSettings;
+fn test(settings: *const CompileSettings) i64 {
+    const result = ast::parser::Parser::parse(std::path::PathBuf::from_cstr(settings.root_path));
     if (result.is_err()) {
         return 1;
     }

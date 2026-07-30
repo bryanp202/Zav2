@@ -53,12 +53,12 @@ pub struct CachedError {
         fmt.bold();
 
         fmt.set_fg_color(TextColor::Red);
-        fmt.unsafe_cstr_ptr("error");
+        fmt.unsafe_cstr_ptr("error[STX");
+        fmt.uint(self.type as u64);
+        fmt.unsafe_cstr_ptr("]");
         fmt.reset_fg_color();
 
-        fmt.unsafe_cstr_ptr(": [STX");
-        fmt.uint(self.type as u64);
-        fmt.unsafe_cstr_ptr("] ");
+        fmt.unsafe_cstr_ptr(": ");
         fmt.unsafe_cstr_ptr(error_type_to_msg(self.type));
         fmt.newline();
 
@@ -341,7 +341,7 @@ struct ErrorLine {
         fmt.unsafe_cstr_ptr("| ");
 
         fmt.set_fg_color(TextColor::Red);
-        if (self.span.len == 1) { // Account for last line being empty (Unclosed errors)
+        if (self.span.len == 1) { // Account for last line being empty (unterminated errors)
             fmt.unsafe_cstr_ptr("\\ ");
             fmt.reset_attributes();
             fmt.slice(self.src);
@@ -376,8 +376,8 @@ pub enum ErrorType {
     InvalidDigitSeperator,
     InvalidNative,
     InvalidScientificNotation,
-    UnclosedBlockComment,
-    UnclosedStringLiteral,
+    UnterminatedBlockComment,
+    UnterminatedStringLiteral,
     UnexpectedSymbol,
 }
 
@@ -390,8 +390,8 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
         ErrorType::InvalidDigitSeperator => msg = "expected digit seperator to be between two digits";
         ErrorType::InvalidNative => msg = "native must start with an alpha character";
         ErrorType::InvalidScientificNotation => msg = "invalid floating point scientific notation";
-        ErrorType::UnclosedBlockComment => msg = "unclosed block comment";
-        ErrorType::UnclosedStringLiteral => msg = "unclosed string literal";
+        ErrorType::UnterminatedBlockComment => msg = "unterminated block comment";
+        ErrorType::UnterminatedStringLiteral => msg = "unterminated string literal";
         ErrorType::UnexpectedSymbol => msg = "unexpected symbol";
         else => msg = "unknown error";
     }

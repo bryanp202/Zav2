@@ -34,33 +34,31 @@ pub struct Parser {
     prev: Token;
     src: Slice[u8];
 
-    pub fn new() Parser {
+    fn new(src: Slice[u8]) Parser {
         var self: Parser = undefined;
         self.errors = List::[Error]::new();
         self.curr.type = TokenType::Eof;
         self.prev.type = TokenType::Eof;
+        self.lexer = Lexer::new(src);
+        self.src = src;
         return self;
     }
 
-    pub fn parse(self: *Parser, path: PathBuf) Result[ParseResult, IoError] {
-        defer path.free();
-
+    pub fn parse(path: PathBuf) Result[ParseResult, IoError] {
         const file_contents = fs::read_file(path.as_cstr());
         if (file_contents.is_err()) {
+            path.free();
             return Result::[ParseResult, IoError]::new_err(file_contents.unwrap_err());
         }
         const src = file_contents.unwrap_ok();
         defer src.free();
 
-        self.src = src.as_slice();
-        self.lexer = Lexer::new(self.src);
-        self.advance();
-        return Result::[ParseResult, IoError]::new_ok(
-            self.parse_ast(path.clone()),
-        );
+        var parser = Parser::new(src.as_slice());
+        return Result::[ParseResult, IoError]::new_ok(parser.parse_ast(path));
     }
 
-    pub fn parse_ast(self: *Parser, path: PathBuf) ParseResult { 
+    fn parse_ast(self: *Parser, path: PathBuf) ParseResult {
+        self.advance();
         while (!self.at_end()) {
             self.advance();
         }
