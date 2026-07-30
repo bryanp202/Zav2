@@ -6,11 +6,6 @@ use ::std::slice::Slice;
 use ::std::fmt::Formatter;
 use ::std::fmt::TextColor;
 
-pub enum ErrorType {
-    ExpectedLeftParen,
-    ExpectedRightParen,
-}
-
 pub struct Span[T] {
     start: T;
     len: T;
@@ -44,11 +39,11 @@ pub struct Error {
 }
 
 pub struct CachedError {
-    type: ErrorType;
+    src: Span[u32];
+    span: Span[u32];
     line: u32;
     col: u32;
-    span: Span[u32];
-    src: Span[u32];
+    type: ErrorType;
 
     pub fn eql(self: *const CachedError, other: *const CachedError) bool {
         return self.type == other.type;
@@ -64,12 +59,7 @@ pub struct CachedError {
         fmt.unsafe_cstr_ptr(": [STX");
         fmt.uint(self.type as u64);
         fmt.unsafe_cstr_ptr("] ");
-        var msg: *const u8 = nullptr; 
-        switch (self.type) {
-            ErrorType::ExpectedLeftParen => msg = "expected '('";
-            ErrorType::ExpectedRightParen => msg = "expected ')'";
-        }
-        fmt.unsafe_cstr_ptr(msg);
+        fmt.unsafe_cstr_ptr(error_type_to_msg(self.type));
         fmt.newline();
 
         fmt.reset_attributes();
@@ -351,24 +341,59 @@ struct ErrorLine {
         fmt.unsafe_cstr_ptr("| ");
 
         fmt.set_fg_color(TextColor::Red);
-        fmt.unsafe_cstr_ptr("| ");
+        if (self.span.len == 1) { // Account for last line being empty (Unclosed errors)
+            fmt.unsafe_cstr_ptr("\\ ");
+            fmt.reset_attributes();
+            fmt.slice(self.src);
+        } else {
+            fmt.unsafe_cstr_ptr("| ");
 
-        fmt.reset_attributes();
-        fmt.slice(self.src);
-        fmt.newline();
+            fmt.reset_attributes();
+            fmt.slice(self.src);
+            fmt.newline();
 
-        for (0..max_line_width + 2) |_| {
-            fmt.unsafe_cstr_ptr(" ");
+            for (0..max_line_width + 2) |_| {
+                fmt.unsafe_cstr_ptr(" ");
+            }
+
+            fmt.bold();
+            fmt.set_fg_color(TextColor::Red);
+            fmt.unsafe_cstr_ptr("  |");
+            for (1..self.span.len) |_| {
+                fmt.unsafe_cstr_ptr("_");
+            }
+            fmt.unsafe_cstr_ptr("^");
         }
-
-        fmt.bold();
-        fmt.set_fg_color(TextColor::Red);
-        fmt.unsafe_cstr_ptr("  |");
-        for (0..self.span.len) |_| {
-            fmt.unsafe_cstr_ptr("_");
-        }
-        fmt.unsafe_cstr_ptr("^");
         fmt.newline();
         fmt.reset_attributes();
     }
+}
+
+pub enum ErrorType {
+    ExpectedLeftParen,
+    ExpectedRightParen,
+    InvalidCharLiteral,
+    InvalidDigitSeperator,
+    InvalidNative,
+    InvalidScientificNotation,
+    UnclosedBlockComment,
+    UnclosedStringLiteral,
+    UnexpectedSymbol,
+}
+
+fn error_type_to_msg(type: ErrorType) *const u8 {
+    var msg: *const u8 = nullptr; 
+    switch (type) {
+        ErrorType::ExpectedLeftParen => msg = "expected '('";
+        ErrorType::ExpectedRightParen => msg = "expected ')'";
+        ErrorType::InvalidCharLiteral => msg = "invalid char literal";
+        ErrorType::InvalidDigitSeperator => msg = "expected digit seperator to be between two digits";
+        ErrorType::InvalidNative => msg = "native must start with an alpha character";
+        ErrorType::InvalidScientificNotation => msg = "invalid floating point scientific notation";
+        ErrorType::UnclosedBlockComment => msg = "unclosed block comment";
+        ErrorType::UnclosedStringLiteral => msg = "unclosed string literal";
+        ErrorType::UnexpectedSymbol => msg = "unexpected symbol";
+        else => msg = "unknown error";
+    }
+    return msg;
 }

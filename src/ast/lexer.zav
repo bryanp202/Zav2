@@ -1,7 +1,10 @@
+use ::std::result::Result;
 use ::std::slice::Slice;
 use ::std::str::Char;
 use ::std::str::CStr;
 use ::std::mem;
+
+use super::error::ErrorType;
 
 pub struct Lexer {
     start: *const u8;
@@ -17,9 +20,9 @@ pub struct Lexer {
     }
 
     pub fn next_token(self: *Lexer) Token {
-        const whitespace_error = self.skip_whitespace();
-        if (whitespace_error != nullptr) {
-            return self.error(whitespace_error);
+        const whitespace_result = self.skip_whitespace();
+        if (whitespace_result.is_err()) {
+            return self.error(whitespace_result.unwrap_err());
         }
 
         if (self.at_end()) {
@@ -69,7 +72,7 @@ pub struct Lexer {
             '@' => return self.native();
             '"' => return self.string();
             ''' => return self.char();
-            else => return self.error("unexpected symbol");
+            else => return self.error(ErrorType::UnexpectedSymbol);
         }
 
         return self.emit_token(tt);
@@ -197,7 +200,7 @@ pub struct Lexer {
         }
 
         if (error) {
-            return self.error("native must start with an alpha character");
+            return self.error(ErrorType::InvalidNative);
         }
         return self.emit_token(TokenType::Native);
     }
@@ -205,26 +208,27 @@ pub struct Lexer {
     fn string(self: *Lexer) Token {
         // 10 == '\n'
         var curr = 0 as u8;
-        while ((self.peek() != '"' or curr == '\') and self.peek() != 10 and !self.at_end()) {
+        while (!self.at_end() and (!self.check('"') or curr == '\') and self.peek() != 10) {
             curr = self.advance();
         }
-        // Consume closing '"'
-        if (self.at_end() or self.peek() == 10) {
-            return self.error("unclosed string literal");
-        } else {
-            self.advance();
+
+        if (self.at_end() or self.check(10 as u8)) {
+            // Remove trailing '\r'
+            self.curr -= (curr == 13) as *const u8;
+            return self.error(ErrorType::UnclosedStringLiteral);
         }
+        self.advance();
 
         return self.emit_token(TokenType::String);
     }
 
     fn char(self: *Lexer) Token {
         if (self.at_end()) {
-            return self.error("unclosed char literal");
+            return self.error(ErrorType::InvalidCharLiteral);
         }
         self.advance();
         if (!self.match(''')) {
-            return self.error("unclosed char literal");
+            return self.error(ErrorType::InvalidCharLiteral);
         }
         return self.emit_token(TokenType::Char);
     }
@@ -235,31 +239,33 @@ pub struct Lexer {
         var tt = TokenType::Integer;
         var error = self.parse_integer();
 
-        if (self.peek() == '.' and (Char::is_numeric(self.peek_next()) or self.peek_next() == '_')) {
+        if (self.check('.') and (Char::is_numeric(self.peek_next()) or self.peek_next() == '_')) {
             self.advance();
 
             error |= self.parse_integer();
 
             if (self.match('e')) {
                 self.match('+') or self.match('-');
-                if (!(Char::is_numeric(self.peek()) or self.peek() == '_')) {
-                    return self.error("invalid floating point scientific notation");
+                if (!(Char::is_numeric(self.peek()) or self.check('_'))) {
+                    return self.error(ErrorType::InvalidScientificNotation);
                 }
+                error |= self.check('_');
                 error |= self.parse_integer();
             }
 
             tt = TokenType::Float;
         } else if (self.match('e')) {
             self.match('+') or self.match('-');
-            if (!(Char::is_numeric(self.peek()) or self.peek() == '_')) {
-                return self.error("invalid floating point scientific notation");
+            if (!(Char::is_numeric(self.peek()) or self.check('_'))) {
+                return self.error(ErrorType::InvalidScientificNotation);
             }
+            error |= self.check('_');
             error |= self.parse_integer();
             tt = TokenType::Float;
         }
 
         if (error) {
-            return self.error("expected digit seperator to be between two digits");
+            return self.error(ErrorType::InvalidDigitSeperator);
         }
 
         return self.emit_token(tt);
@@ -268,8 +274,8 @@ pub struct Lexer {
     fn parse_integer(self: *Lexer) bool {
         var previous = self.previous();
         var error = false;
-        while (Char::is_numeric(self.peek()) or self.peek() == '_') {
-            error |= self.peek() == '_' and previous == '_';
+        while (Char::is_numeric(self.peek()) or self.check('_')) {
+            error |= self.check('_') and previous == '_';
             previous = self.advance();
         }
         error |= previous == '_';
@@ -281,10 +287,11 @@ pub struct Lexer {
     /// Helper func ///
     ///////////////////
 
-    fn error(self: *const Lexer, err: *const u8) Token {
+    fn error(self: *const Lexer, err: ErrorType) Token {
         var token: Token = undefined;
-        token.lexeme = CStr::unsafe_from_ptr(err).as_slice();
+        token.lexeme = Slice::[u8]::new(self.start, (self.curr - self.start) as u64);
         token.type = TokenType::Error;
+        token.err = err;
         return token;
     }
 
@@ -295,7 +302,7 @@ pub struct Lexer {
         return token;
     }
 
-    fn skip_whitespace(self: *Lexer) *const u8 {
+    fn skip_whitespace(self: *Lexer) Result[void, ErrorType] {
         while (!self.at_end()) {
             switch (self.peek() as i64) {
                 9 | 10 | 13 | 32 => { // '\t', '\n', '\r', ' '
@@ -309,10 +316,10 @@ pub struct Lexer {
                             self.advance();
                         }
                     } else if (self.match('*')) {
-                        self.start = (self.curr - 1) as *const u8;
+                        self.start = (self.curr - 2) as *const u8;
                         var error = true;
                         while (!self.at_end()) {
-                            if (self.peek() == '*' and self.peek_next() == '/') {
+                            if (self.check('*') and self.peek_next() == '/') {
                                 error = false;
                                 self.advance();
                                 self.advance();
@@ -321,7 +328,7 @@ pub struct Lexer {
                             self.advance();
                         }
                         if (error) {
-                            return "unclosed block comment";
+                            return Result::[void, ErrorType]::new_err(ErrorType::UnclosedBlockComment);
                         }
                     }
                     continue;
@@ -330,7 +337,7 @@ pub struct Lexer {
             break;
         }
         self.start = self.curr;
-        return nullptr;
+        return Result::[void, ErrorType]::new_ok(nullptr as void);
     }
 
     fn at_end(self: *const Lexer) bool {
@@ -352,8 +359,12 @@ pub struct Lexer {
         return 0 as u8;
     }
 
+    fn check(self: *Lexer, expected: u8) bool {
+        return self.curr.* == expected;
+    }
+
     fn match(self: *Lexer, expected: u8) bool {
-        if (self.peek() == expected and !self.at_end()) {
+        if (self.check(expected) and !self.at_end()) {
             self.advance();
             return true;
         }
@@ -370,6 +381,7 @@ pub struct Lexer {
 pub struct Token {
     lexeme: Slice[u8];
     type: TokenType;
+    err: ErrorType;
 }
 
 pub enum TokenType {

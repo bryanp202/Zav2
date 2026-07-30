@@ -60,14 +60,10 @@ pub struct Parser {
         );
     }
 
-    pub fn parse_ast(self: *Parser, path: PathBuf) ParseResult {
-        for (0..10) |i| {
-            self.error(ErrorType::ExpectedLeftParen);
+    pub fn parse_ast(self: *Parser, path: PathBuf) ParseResult { 
+        while (!self.at_end()) {
             self.advance();
         }
-        self.errors.items[0].span.start += 4 as u8;
-        self.errors.items[0].span.len += 32 as u8;
-        
 
         var result: ParseResult = undefined;
         result.error_cache = ErrorCache::from_error_list(path, self.src, self.errors);
@@ -108,7 +104,7 @@ pub struct Parser {
     fn advance(self: *Parser) void {
         self.advance_unchecked();
         while (self.check(TokenType::Error)) {
-            // self.errors.push();
+            self.error(self.curr.err);
             self.curr = self.lexer.next_token();
         }
     }
@@ -126,7 +122,7 @@ pub struct Parser {
             self.advance_unchecked();
             return true;
         }
-        // self.error(ParsingError::new(err));
+        self.error(err);
         return false;
     }
 }
