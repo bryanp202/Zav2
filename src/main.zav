@@ -15,25 +15,51 @@ pub fn main(argc: i64, argv: **u8) i64 {
         return 1;
     }
 
-    for (0..100_000) |_| {
+    for (0..100) |_| {
         test(&settings);
     }
 
     return 0;
 }
 use args::CompileSettings;
+use std::thread::Thread;
+use std::path::PathBuf;
+use ast::parser::ParseResult;
+use std::collections::list::List;
+use std::io::IoError;
+use std::result::Result;
 fn test(settings: *const CompileSettings) i64 {
-    const result = ast::parser::Parser::parse(std::path::PathBuf::from_cstr(settings.root_path));
-    if (result.is_err()) {
-        return 1;
-    }
-    const parse_result = result.unwrap_ok();
-    defer parse_result.free();
+    var threads = List::[Thread[PathBuf, Result[ParseResult, IoError]]]::new();
+    defer threads.free();
 
-    var fmt = std::fmt::Formatter::new_for_terminal();
-    defer fmt.free();
-    parse_result.error_cache.fmt(&fmt);
-    fmt.print();
+    for (0..4) |_| {
+        const worker = |path: PathBuf| -> Result[ParseResult, IoError] {
+            return ast::parser::Parser::parse(path);
+        };
+        const path = PathBuf::from_cstr(settings.root_path);
+        threads.push(Thread::[PathBuf, Result[ParseResult, IoError]]::new(worker, path).unwrap_ok());
+    }
+
+    for (0..threads.len, threads.items) |_, thread| {
+        const join_result = thread.join();
+        if (join_result.is_err()) {
+            return 1;
+        }
+
+        const result = join_result.unwrap_ok();
+        if (result.is_err()) {
+            return 1;
+        }
+
+        const parse_result = result.unwrap_ok();
+        defer parse_result.free();
+        @printf("len of buffer: %d\n", parse_result.error_cache.cache.len);
+
+        var fmt = std::fmt::Formatter::new_for_terminal();
+        defer fmt.free();
+        parse_result.error_cache.fmt(&fmt);
+        fmt.print();
+    }
 
     return 0;
 }

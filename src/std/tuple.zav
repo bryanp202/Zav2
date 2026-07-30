@@ -1,0 +1,41 @@
+pub struct Tuple2[A, B] {
+    _0: A;
+    _1: B;
+
+    pub fn new(a: A, b: B) Tuple2[A, B] {
+        var self: Tuple2[A, B] = undefined;
+        self._0 = a;
+        self._1 = b;
+        return self;
+    }
+}
+
+pub struct Tuple3[A, B, C] {
+    _0: A;
+    _1: B;
+    _2: C;
+
+    pub fn new(a: A, b: B, c: C) Tuple3[A, B, C] {
+        var self: Tuple3[A, B, C] = undefined;
+        self._0 = a;
+        self._1 = b;
+        self._2 = c;
+        return self;
+    }
+}
+
+pub struct Tuple4[A, B, C, D] {
+    _0: A;
+    _1: B;
+    _2: C;
+    _3: D;
+
+    pub fn new(a: A, b: B, c: C, d: D) Tuple4[A, B, C, D] {
+        var self: Tuple4[A, B, C, D] = undefined;
+        self._0 = a;
+        self._1 = b;
+        self._2 = c;
+        self._3 = d;
+        return self;
+    }
+}
