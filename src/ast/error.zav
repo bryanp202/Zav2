@@ -94,15 +94,14 @@ pub struct ErrorCache {
         defer lines_cache.free();
 
         for (0..errors.len, errors.items) |i, err| {
-            const cache_data = lines_cache.find(src, err.span);
-
-            const src_span = Span::[u32]::new(self.cache.len as u32, cache_data._2.len as u32);
-            const span = Span::[u32]::new(self.cache.len as u32 + cache_data._1 - 1 as u32, err.span.len);
-            self.cache.append(cache_data._2);
+            const { _0: line, _1: col, _2: src_slice } = lines_cache.find(src, err.span);
+            const src_span = Span::[u32]::new(self.cache.len as u32, src_slice.len as u32);
+            const span = Span::[u32]::new(self.cache.len as u32 + col - 1 as u32, err.span.len);
+            self.cache.append(src_slice);
 
             var cached_error: CachedError = undefined;
-            cached_error.line = cache_data._0;
-            cached_error.col = cache_data._1;
+            cached_error.line = line;
+            cached_error.col = col;
             cached_error.src = src_span;
             cached_error.span = span;
             cached_error.type = err.type;
@@ -398,6 +397,7 @@ struct LineNumCache {
         self.cache.free();
     }
 
+    /// Returns (line, col, src_slice)
     pub fn find(self: *const LineNumCache, src: Slice[u8], span: Span[u32]) Tuple3[u32, u32, Slice[u8]] {
         const line = self.binary_search(span.start);
         const end_line = self.binary_search(span.start + span.len);

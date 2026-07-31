@@ -15,7 +15,7 @@ pub fn main(argc: i64, argv: **u8) i64 {
         return 1;
     }
 
-    for (0..100) |_| {
+    for (0..100_000_000) |_| {
         test(&settings);
     }
 
