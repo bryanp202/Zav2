@@ -141,7 +141,7 @@ pub struct ErrorCache {
             err.src.len,
         );
 
-        var error_lines: [4]ErrorLine = undefined;
+        var error_lines: [6]ErrorLine = undefined;
         const line_count = ErrorCache::store_lines(src, err, &error_lines);
         
         if (line_count == 1) {
@@ -163,7 +163,7 @@ pub struct ErrorCache {
     fn store_lines(
         src: Slice[u8],
         err: *const CachedError,
-        error_lines: *[4]ErrorLine,
+        error_lines: *[6]ErrorLine,
     ) u64 {
         var line_count = 0;
         var lines_iter = src.split(|c: *u8| -> bool c.* == 10);
