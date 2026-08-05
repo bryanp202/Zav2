@@ -103,7 +103,7 @@ pub struct RwLock[T] {
     pub fn new(item: T) RwLock[T] {
         var self: RwLock[T] = undefined;
         self._inner = item;
-        @createRwLock(&self._handle);
+        @createMutex(&self._handle);
         return self;
     }
 
@@ -158,7 +158,7 @@ pub struct WriteLock[T] {
     }
 
     pub fn release(self: *const WriteLock[T]) void {
-        @mutexReleaseShared(self._handle);
+        @mutexReleaseShared(self._lock_handle);
     }
 
     pub fn get(self: *const WriteLock[T]) *T {
@@ -167,18 +167,18 @@ pub struct WriteLock[T] {
 }
 
 pub struct ReadLock[T] {
-    _handle: *i64;
+    _lock_handle: *i64;
     item: *T;
 
     pub fn new(item: *T, _handle: *i64) ReadLock[T] { /// [Zav2] NONPUB
         var self: ReadLock[T] = undefined;
         self.item = item;
-        self._handle = _handle;
+        self._lock_handle = _handle;
         return self;
     }
 
     pub fn release(self: *const ReadLock[T]) void {
-        @mutexReleaseExclusive(self._handle);
+        @mutexReleaseExclusive(self._lock_handle);
     }
 
     pub fn get(self: *const ReadLock[T]) *T {

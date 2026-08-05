@@ -117,21 +117,4 @@ pub struct Slice[T] {
             fmt.unsafe_cstr_ptr("]");
         }
     }
-
-    pub fn debug(self: *const Slice[T]) void {
-        @printf("-------------------------------\n");
-        @printf("Slice: len: %d, ptr: %d\n", self.len, self.ptr);
-        for (0..self.len, self.ptr) |_, item| {
-            compif (T::debug) {
-                item.debug();
-            } else {
-                const bytes = mem::bytes::[T](item);
-                for (0..bytes.len, bytes.ptr) |_, b| {
-                    @printf("%d, ", b.*);
-                }
-            }
-            @printf("\n");
-        }
-        @printf("-------------------------------\n");
-    }
 }

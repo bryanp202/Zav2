@@ -64,15 +64,18 @@ pub struct HashMap[K, V, H] {
             self.resize();
         }
 
-        const ptr = self.make_entry(&k);
-        const replacing = ptr.type == EntryType::Some;
-        ptr.type = EntryType::Some;
-        ptr.key = k;
-        ptr.val = v;
+        const entry = self.make_entry(&k);
+        const existed = entry.type == EntryType::Some;
+        if (existed) {
+            entry.free();
+        } else {
+            self.len += 1 as u64;
+        }
+        entry.type = EntryType::Some;
+        entry.key = k;
+        entry.val = v;
 
-        self.len += 1 as u64;
-
-        return replacing;
+        return existed;
     }
 
     pub fn get(self: *const HashMap[K, V, H], k: K) Option[V] {
@@ -95,6 +98,16 @@ pub struct HashMap[K, V, H] {
 
     pub fn get_entry_ptr(self: *HashMap[K, V, H], k: K) Option[*Entry[K, V]] {
         return self.find_entry(&k);
+    }
+
+    pub fn get_or_put(self: *HashMap[K, V, H], k: K) GetOrPutResult[K, V] {
+        const entry = self.make_entry(&k);
+        const existed = entry.type == EntryType::Some;
+        if (!existed) {
+            entry.key = k;
+            self.len += 1 as u64;
+        }
+        return GetOrPutResult::[K, V]::new(&entry.key, &entry.val, existed);
     }
 
    /***********/
@@ -143,10 +156,10 @@ pub struct HashMap[K, V, H] {
             }
         } loop i = (i + 1 as u64) % self.capacity;
 
-        const ptr = &self.items[i];
-        ptr.hash = k_hash;
+        const entry = &self.items[i];
+        entry.hash = k_hash;
 
-        return ptr;
+        return entry;
     }
 
     fn find_entry(self: *const HashMap[K, V, H], k: *const K) Option[*Entry[K, V]] {
@@ -168,19 +181,6 @@ pub struct HashMap[K, V, H] {
         } loop i = (i + 1 as u64) % self.capacity;
 
         return Option::[*Entry[K, V]]::new_none();
-    }
-
-    pub fn debug(self: *const HashMap[K, V, H]) void {
-        @printf("-------------------------------\n");
-        @printf("HashMap: len: %d, capacity: %d\n", self.len, self.capacity);
-        for (0..self.capacity, self.items) |_, entry| {
-            switch (entry.type) {
-                EntryType::Some => @printf("- Some: %llu\n", entry.hash);
-                EntryType::Grave => @printf("- Grave\n");
-                EntryType::None => @printf("- None\n");
-            }
-        }
-        @printf("-------------------------------\n");
     }
 }
 
@@ -260,5 +260,19 @@ pub struct EntryIter[K, V] {
         } loop self.curr += 1 as u64;
 
         return Option::[*const Entry[K, V]]::new_none();
+    }
+}
+
+struct GetOrPutResult[K, V] {
+    key_ptr: *K;
+    val_ptr: *V;
+    existed: bool;
+
+    pub fn new(key_ptr: *K, val_ptr: *V, existed: bool) GetOrPutResult[K, V] {
+        var self: GetOrPutResult[K, V] = undefined;
+        self.key_ptr = key_ptr;
+        self.val_ptr = val_ptr;
+        self.existed = existed;
+        return self;
     }
 }

@@ -1,11 +1,104 @@
 pub mod error;
 pub mod lexer;
 pub mod parser;
+pub mod symbol;
 
-pub struct Ast {
-    _: bool;
+use ::std::collections::list::List;
+use symbol::Symbol;
 
-    pub fn free(self: *const Ast) void {
+pub struct UnresolvedModule {
+    // items: List[Item];
+    // stmts: List[Stmt];
+    // exprs: List[Expr];
+    // patterns: List[Pattern];
+    // path_segments: List[PathSegment];
+    // generic_args: List[GenericArg];
+
+    pub fn free(self: *const UnresolvedModule) void {
         
     }
 }
+
+// pub enum ItemType {
+//     Fn,
+//     Enum,
+//     Struct,
+//     Union,
+//     Mod,
+//     Use,
+//     Global,
+// }
+
+// pub enum StmtType {
+//     Mod,
+//     Use,
+//     Global,
+//     Mutate,
+//     Declare,
+//     Expression,
+//     While,
+//     Block,
+//     If,
+//     Compif,
+//     Break,
+//     Continue,
+//     Function,
+//     Return,
+//     Struct,
+//     Union,
+//     Enum,
+//     Switch,
+//     Defer,
+//     For,
+//     Generic,
+// }
+
+// pub enum ExprType {
+//     Path, // Scope and Identifier mixed
+//     Literal,
+//     Native,
+//     Conversion,
+//     Dereference,
+//     Field,
+//     Call,
+//     Index,
+//     Unary,
+//     Arith,
+//     Compare,
+//     And,
+//     Or,
+//     If,
+//     Lambda,
+//     Generic,
+//     Shift,
+//     BitOr,
+//     BitAnd,
+//     BitXor,
+// }
+
+// pub enum PatternType {
+//     Ident,
+//     Destruct,
+//     Rest,
+// }
+
+// pub struct Item {
+//     type: ItemType;
+// }
+
+// pub struct Stmt {
+//     type: StmtType;
+// }
+
+// pub struct Expr {
+//     type: ExprType;
+// }
+
+// pub struct Pattern {
+//     type: PatternType;
+// }
+
+// pub struct PathSegment {
+//     ident: Symbol;
+//     generic_args: Span[u32];
+// }

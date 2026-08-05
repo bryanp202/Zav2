@@ -1,0 +1,142 @@
+use ::std::collections::hash::HashMap;
+use ::std::collections::list::List;
+use ::std::hash::SipHasher;
+use ::std::slice::Slice;
+use ::std::math::min;
+use ::std::mem;
+use ::std::sync::RwLock;
+use ::std::sync::Arc;
+
+pub struct Symbol {
+    _id: u32;
+
+    pub fn [H] hash(self: *const Symbol, hasher: *const Hasher) u64 {
+        return hasher.hash_one(&self._id, @sizeof(self._id));
+    }
+
+    overload== (self: Symbol, other: Symbol) bool {
+        return self._id == other._id;
+    }
+}
+
+pub struct Interner {
+    arena: Arena;
+    map: HashMap[Slice[u8], Symbol, SipHasher];
+    interned: List[Slice[u8]];
+
+    pub fn new() Interner {
+        var self: Interner = undefined;
+        self.arena = Arena::new();
+        self.map = HashMap::[Slice[u8], Symbol, SipHasher]::new(SipHasher::new(@nanoTimestamp(), @nanoTimestamp()));
+        self.interned = List::[Slice[u8]]::new();
+        return self;
+    }
+
+    pub fn free(self: *const Interner) void {
+        self.map.free();
+        self.interned.free();
+        self.arena.free();
+    }
+
+    pub fn intern(self: *Interner, slice: Slice[u8]) Symbol {
+        const entry = self.map.get_or_put(slice);
+        if (!entry.existed) {
+            const buf = self.arena.alloc_no_align(slice.len) as *u8;
+            mem::cpy::[u8](slice.len, buf, slice.ptr);
+            const interned_slice = Slice::[u8]::new(buf, slice.len);
+            
+            entry.key_ptr.* = interned_slice;
+            var symbol: Symbol = undefined;
+            symbol._id = self.interned.len as u32;
+            entry.val_ptr.* = symbol;
+            self.interned.push(interned_slice);
+        }
+        return entry.val_ptr.*;
+    }
+
+    pub fn get(self: *const Interner, sym: Symbol) Slice[u8] {
+        return self.interned.items[sym._id];
+    }
+}
+
+pub struct Block {
+    bytes: *u8;
+    capacity: u64;
+    len: u64;
+    next: *Block;
+
+    pub fn with_capacity(next: *Block, capacity: u64) Block {
+        var self: Block = undefined;
+        self.bytes = @malloc(capacity) as *u8;
+        self.capacity = capacity;
+        self.len = 0 as u64;
+        self.next = next;
+        return self;
+    }
+
+    pub fn free(self: *const Block) void {
+        @free(self.bytes);
+    }
+}
+
+pub struct Arena {
+    head: Block;
+    count: u64;
+
+    pub fn new() Arena {
+        var self: Arena = undefined;
+        self.head = Block::with_capacity(nullptr, 1024 as u64);
+        self.count = 1 as u64;
+        return self;
+    }
+
+    pub fn free(self: *const Arena) void {
+        var current = &self.head;
+        while (current != nullptr) {
+            current.free();
+            current = current.next;
+        }
+    }
+
+    pub fn alloc_no_align(self: *Arena, bytes: u64) *void {
+        if (self.head.len + bytes >= self.head.capacity) {
+            self.resize(bytes);
+        }
+
+        if (self.head.bytes == nullptr) {
+            return nullptr;
+        }
+
+        const ptr = (self.head.bytes + self.head.len) as *void;
+        self.head.len += bytes;
+        return ptr;
+    }
+
+    pub fn resize(self: *Arena, append_len: u64) void {
+        self.count += 1 as u64;
+        const capacity = min::[u64](2_097_152 as u64, self.head.capacity * 2 as u64);
+        const old_head = @malloc(@sizeof(self.head)) as *Block;
+        old_head.* = self.head;
+        self.head = Block::with_capacity(old_head, capacity);
+    }
+}
+
+pub struct GlobalInterner {
+    inner: Arc[RwLock[Interner]];
+
+    pub fn new() GlobalInterner {
+        var self: GlobalInterner = undefined;
+        self.inner = Arc::[RwLock[Interner]]::new(RwLock::[Interner]::new(Interner::new()));
+        return self;
+    }
+
+    pub fn free(self: *const GlobalInterner) void {
+        self.inner.free();
+    }
+
+    pub fn clone(self: *const GlobalInterner) GlobalInterner {
+        var clone: GlobalInterner = undefined;
+        clone.inner = self.inner.clone();
+        return clone;
+    }
+}

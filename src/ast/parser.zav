@@ -5,7 +5,7 @@ use ::std::io::IoError;
 use ::std::io::fs;
 use ::std::result::Result;
 
-use super::Ast;
+use super::UnresolvedModule;
 use super::lexer::Lexer;
 use super::lexer::Token;
 use super::lexer::TokenType;
@@ -14,11 +14,11 @@ use super::error::Error;
 use super::error::ErrorType;
 
 pub struct ParseResult {
-    ast: Ast;
+    module: UnresolvedModule;
     error_cache: ErrorCache;
 
     pub fn free(self: *const ParseResult) void {
-        self.ast.free();
+        self.module.free();
         self.error_cache.free();
     }
 
