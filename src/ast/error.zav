@@ -318,7 +318,7 @@ struct ErrorLine {
 
         fmt.set_fg_color(TextColor::Red);
         if (self.span.len == 1) { // Account for last line being empty (unterminated errors)
-            fmt.unsafe_cstr_ptr("\\ ");
+            fmt.unsafe_cstr_ptr("/ ");
             fmt.reset_attributes();
             fmt.slice(self.src);
         } else {
