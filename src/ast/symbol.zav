@@ -121,21 +121,21 @@ pub struct Arena {
     }
 }
 
-pub struct GlobalInterner {
+pub struct SharedInterner {
     inner: Arc[RwLock[Interner]];
 
-    pub fn new() GlobalInterner {
-        var self: GlobalInterner = undefined;
+    pub fn new() SharedInterner {
+        var self: SharedInterner = undefined;
         self.inner = Arc::[RwLock[Interner]]::new(RwLock::[Interner]::new(Interner::new()));
         return self;
     }
 
-    pub fn free(self: *const GlobalInterner) void {
+    pub fn free(self: *const SharedInterner) void {
         self.inner.free();
     }
 
-    pub fn clone(self: *const GlobalInterner) GlobalInterner {
-        var clone: GlobalInterner = undefined;
+    pub fn clone(self: *const SharedInterner) SharedInterner {
+        var clone: SharedInterner = undefined;
         clone.inner = self.inner.clone();
         return clone;
     }
