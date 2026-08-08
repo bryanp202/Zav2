@@ -1,4 +1,5 @@
 use super::super::option::Option;
+use super::super::tuple::Tuple2;
 
 /// HashMap owns all values given to it
 pub struct HashMap[K, V, H] {
@@ -59,23 +60,25 @@ pub struct HashMap[K, V, H] {
         return EntryIter::[K, V]::new(self.capacity, self.items);
     }
 
-    pub fn insert(self: *HashMap[K, V, H], k: K, v: V) bool {
+    // Returns the overwritten value, if there is one
+    pub fn insert(self: *HashMap[K, V, H], k: K, v: V) Option[Tuple2[K, V]] {
         if (self.capacity == 0 or (self.len + 1.0) / self.capacity > self.max_density) {
             self.resize();
         }
 
         const entry = self.make_entry(&k);
-        const existed = entry.type == EntryType::Some;
-        if (existed) {
-            entry.free();
-        } else {
-            self.len += 1 as u64;
+        if (entry.type == EntryType::Some) {
+            const old_data = Tuple2::[K, V]::new(entry.key, entry.val);
+            entry.key = k;
+            entry.val = v;
+            return Option::[Tuple2[K, V]]::new_some(old_data);
         }
-        entry.type = EntryType::Some;
         entry.key = k;
         entry.val = v;
+        entry.type = EntryType::Some;
+        self.len += 1 as u64;
 
-        return existed;
+        return Option::[Tuple2[K, V]]::new_none();
     }
 
     pub fn get(self: *const HashMap[K, V, H], k: K) Option[V] {
@@ -100,12 +103,18 @@ pub struct HashMap[K, V, H] {
         return self.find_entry(&k);
     }
 
+    // Must initialize the value if `existed == false`
     pub fn get_or_put(self: *HashMap[K, V, H], k: K) GetOrPutResult[K, V] {
+        if (self.capacity == 0 or (self.len + 1.0) / self.capacity > self.max_density) {
+            self.resize();
+        }
+
         const entry = self.make_entry(&k);
         const existed = entry.type == EntryType::Some;
         if (!existed) {
             entry.key = k;
             self.len += 1 as u64;
+            entry.type = EntryType::Some;
         }
         return GetOrPutResult::[K, V]::new(&entry.key, &entry.val, existed);
     }
@@ -137,7 +146,8 @@ pub struct HashMap[K, V, H] {
     fn hash_key(self: *const HashMap[K, V, H], k: *const K) u64 {
         compif (K::hash::[H]) {
             var hasher = self.hasher;
-            return K::hash::[H](k, &hasher);
+            K::hash::[H](k, &hasher);
+            return hasher.finish();
         } else {
             return self.hasher.hash_one(k as *const u8, @sizeof(k.*));
         }

@@ -69,22 +69,15 @@ pub struct Slice[T] {
         return true;
     }
 
-    // pub fn compif(0 as T != 0 as T: bool) eql(self: *const Slice[T], other: *const Slice[T]) bool {
-    //     if (self.len != other.len) {
-    //         return false;
-    //     }
-    //     if (self.ptr == other.ptr) {
-    //         return true;
-    //     }
-
-    //     for (0..self.len, self.ptr) |i, item| {
-    //         if (item.* != other.ptr[i]) return false;
-    //     }
-    //     return true;
-    // }
-
-    pub fn [H] hash(self: *const Slice[T], hasher: *const H) u64 {
-        return hasher.hash_one(self.ptr as *const u8, self.len);
+    pub fn [H] hash(self: *const Slice[T], hasher: *H) void {
+        compif (T::hash) {
+            for (0..self.len, self.ptr) |_, item| {
+                T::hash(item, hasher);
+            }
+        } else {
+            hasher.update_state(self.ptr as *const u8, self.len * @sizeof(self.ptr.*));
+        }
+        
     }
 
     pub fn fmt(self: *const Slice[T], fmt: *Formatter) void {
