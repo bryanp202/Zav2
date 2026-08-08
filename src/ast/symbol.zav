@@ -122,33 +122,33 @@ pub struct Arena {
     }
 }
 
-pub struct SharedInterner {
+pub struct SymbolInterner {
     inner: Arc[RwLock[Interner]];
 
-    pub fn new() SharedInterner {
-        var self: SharedInterner = undefined;
+    pub fn new() SymbolInterner {
+        var self: SymbolInterner = undefined;
         self.inner = Arc::[RwLock[Interner]]::new(RwLock::[Interner]::new(Interner::new()));
         return self;
     }
 
-    pub fn free(self: *const SharedInterner) void {
+    pub fn free(self: *const SymbolInterner) void {
         self.inner.free();
     }
 
-    pub fn clone(self: *const SharedInterner) SharedInterner {
-        var clone: SharedInterner = undefined;
+    pub fn clone(self: *const SymbolInterner) SymbolInterner {
+        var clone: SymbolInterner = undefined;
         clone.inner = self.inner.clone();
         return clone;
     }
 
     // Undefined behavior for invalid `Symbols`
-    pub fn get(self: *const SharedInterner, sym: Symbol) Slice[u8] {
+    pub fn get(self: *const SymbolInterner, sym: Symbol) Slice[u8] {
         var lock = self.inner.get().read();
         defer lock.release();
         return lock.item.get(sym);
     }
 
-    pub fn intern(self: *const SharedInterner, id: Slice[u8]) Symbol {
+    pub fn intern(self: *const SymbolInterner, id: Slice[u8]) Symbol {
         var lock = self.inner.get().write();
         defer lock.release();
         return lock.item.intern(id);
