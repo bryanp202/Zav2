@@ -19,7 +19,7 @@ pub struct Thread[I, O] {
     _handle: i64;
     out: Arc[O];
 
-    pub fn new(worker: fn(I)O, in: I) Result[Thread[I, O], I] {
+    pub fn new(in: I, worker: fn(I)O) Result[Thread[I, O], I] {
         const thread_args = @malloc(@sizeof(ThreadArgs::[I, O]::new(worker, in))) as *ThreadArgs[I, O];
         thread_args.* = ThreadArgs::[I, O]::new(worker, in);
 
