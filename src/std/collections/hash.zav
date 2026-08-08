@@ -1,4 +1,5 @@
 use super::super::option::Option;
+use super::super::result::Result;
 use super::super::tuple::Tuple2;
 
 /// HashMap owns all values given to it
@@ -60,7 +61,8 @@ pub struct HashMap[K, V, H] {
         return EntryIter::[K, V]::new(self.capacity, self.items);
     }
 
-    // Returns the overwritten value, if there is one
+    /// Returns the overwritten value, if there is one
+    /// Takes ownership of the key and value
     pub fn insert(self: *HashMap[K, V, H], k: K, v: V) Option[Tuple2[K, V]] {
         if (self.capacity == 0 or (self.len + 1.0) / self.capacity > self.max_density) {
             self.resize();
@@ -81,29 +83,50 @@ pub struct HashMap[K, V, H] {
         return Option::[Tuple2[K, V]]::new_none();
     }
 
-    pub fn get(self: *const HashMap[K, V, H], k: K) Option[V] {
-        const entry = self.find_entry(&k);
+    /// Returns the overwritten value, if there is one
+    /// Takes ownership of the key and value
+    /// Takes in a hash hint, undefined if hash is incorrect
+    pub fn unsafe_insert_with_hash(self: *HashMap[K, V, H], k: K, v: V, k_hash: u64) Option[Tuple2[K, V]] {
+        if (self.capacity == 0 or (self.len + 1.0) / self.capacity > self.max_density) {
+            self.resize();
+        }
+
+        const entry = self.make_entry_with_hash(&k, k_hash);
+        if (entry.type == EntryType::Some) {
+            const old_data = Tuple2::[K, V]::new(entry.key, entry.val);
+            entry.key = k;
+            entry.val = v;
+            return Option::[Tuple2[K, V]]::new_some(old_data);
+        }
+        entry.key = k;
+        entry.val = v;
+        entry.type = EntryType::Some;
+        self.len += 1 as u64;
+
+        return Option::[Tuple2[K, V]]::new_none();
+    }
+
+    pub fn get(self: *HashMap[K, V, H], k: K) Option[*V] {
+        const entry = self.find_entry(&k, self.hash_key(&k));
 
         if (entry.is_none()) {
-            return Option::[V]::new_none();            
+            return Option::[*V]::new_none(); 
         }
-        return Option::[V]::new_some(entry.unwrap().val); 
+        return Option::[*V]::new_some(&entry.unwrap().val);
     }
 
-    pub fn get_ptr(self: *HashMap[K, V, H], k: K) Option[*V] {
-        const entry = self.find_entry(&k);
+    /// Used to first check if a value exists, and returns a hash hint if not present
+    pub fn peek_or_hash(self: *const HashMap[K, V, H], k: K) Result[*const V, u64] {
+        const k_hash = self.hash_key(&k);
 
-        if (entry.is_some()) {
-            return Option::[*V]::new_some(&entry.unwrap().val); 
+        const entry = self.find_entry(&k, k_hash);
+        if (entry.is_none()) {
+            return Result::[*const V, u64]::new_err(k_hash);
         }
-        return Option::[*V]::new_none();
+        return Result::[*const V, u64]::new_ok(&entry.unwrap().val);
     }
 
-    pub fn get_entry_ptr(self: *HashMap[K, V, H], k: K) Option[*Entry[K, V]] {
-        return self.find_entry(&k);
-    }
-
-    // Must initialize the value if `existed == false`
+    /// Must initialize the value if `existed == false`
     pub fn get_or_put(self: *HashMap[K, V, H], k: K) GetOrPutResult[K, V] {
         if (self.capacity == 0 or (self.len + 1.0) / self.capacity > self.max_density) {
             self.resize();
@@ -112,6 +135,9 @@ pub struct HashMap[K, V, H] {
         const entry = self.make_entry(&k);
         const existed = entry.type == EntryType::Some;
         if (!existed) {
+            compif (K::free) {
+                entry.key.free();
+            }
             entry.key = k;
             self.len += 1 as u64;
             entry.type = EntryType::Some;
@@ -172,12 +198,11 @@ pub struct HashMap[K, V, H] {
         return entry;
     }
 
-    fn find_entry(self: *const HashMap[K, V, H], k: *const K) Option[*Entry[K, V]] {
+    fn find_entry(self: *const HashMap[K, V, H], k: *const K, k_hash: u64) Option[*Entry[K, V]] {
         if (self.capacity == 0) {
             return Option::[*Entry[K, V]]::new_none();
         }
 
-        const k_hash = self.hash_key(k);
         var i = k_hash % self.capacity;
 
         while (self.items[i].type != EntryType::None) {

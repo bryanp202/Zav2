@@ -39,6 +39,7 @@ pub struct Interner {
         self.arena.free();
     }
 
+    /// Most efficient if no locks involved
     pub fn intern(self: *Interner, id: Slice[u8]) Symbol {
         const entry = self.map.get_or_put(id);
         if (!entry.existed) {
@@ -46,9 +47,9 @@ pub struct Interner {
             mem::cpy::[u8](id.len, buf, id.ptr);
             const interned_slice = Slice::[u8]::new(buf, id.len);
             
-            entry.key_ptr.* = interned_slice;
             var symbol: Symbol = undefined;
             symbol._id = self.interned.len as u32;
+            entry.key_ptr.* = interned_slice;
             entry.val_ptr.* = symbol;
             self.interned.push(interned_slice);
         }
@@ -148,9 +149,28 @@ pub struct SymbolInterner {
         return lock.item.get(sym);
     }
 
+    /// Assumes that most calls will be interning an already interned identifier
     pub fn intern(self: *const SymbolInterner, id: Slice[u8]) Symbol {
-        var lock = self.inner.get().write();
-        defer lock.release();
-        return lock.item.intern(id);
+        var read_lock = self.inner.get().read();
+        const maybe_symbol = read_lock.item.map.peek_or_hash(id);
+        read_lock.release();
+        if (maybe_symbol.is_ok()) {
+            return maybe_symbol.unwrap_ok().*;
+        }
+
+        var write_lock = self.inner.get().write();
+        defer write_lock.release();
+
+        const k_hash = maybe_symbol.unwrap_err();
+        const buf = write_lock.item.arena.alloc_no_align(id.len) as *u8;
+        mem::cpy::[u8](id.len, buf, id.ptr);
+        const interned_slice = Slice::[u8]::new(buf, id.len);
+        
+        var symbol: Symbol = undefined;
+        symbol._id = write_lock.item.interned.len as u32;
+        write_lock.item.map.unsafe_insert_with_hash(interned_slice, symbol, k_hash);
+        write_lock.item.interned.push(interned_slice);
+
+        return symbol;
     }
 }
