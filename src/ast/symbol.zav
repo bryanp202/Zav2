@@ -6,12 +6,13 @@ use ::std::math::min;
 use ::std::mem;
 use ::std::sync::RwLock;
 use ::std::sync::Arc;
+use ::std::option::Option;
 
 pub struct Symbol {
     _id: u32;
 
-    pub fn [H] hash(self: *const Symbol, hasher: *const Hasher) u64 {
-        return hasher.hash_one(&self._id, @sizeof(self._id));
+    pub fn [H] hash(self: *const Symbol, hasher: *Hasher) void {
+        hasher.update_state(&self._id, @sizeof(self._id));
     }
 
     overload== (self: Symbol, other: Symbol) bool {
@@ -38,12 +39,12 @@ pub struct Interner {
         self.arena.free();
     }
 
-    pub fn intern(self: *Interner, slice: Slice[u8]) Symbol {
-        const entry = self.map.get_or_put(slice);
+    pub fn intern(self: *Interner, id: Slice[u8]) Symbol {
+        const entry = self.map.get_or_put(id);
         if (!entry.existed) {
-            const buf = self.arena.alloc_no_align(slice.len) as *u8;
-            mem::cpy::[u8](slice.len, buf, slice.ptr);
-            const interned_slice = Slice::[u8]::new(buf, slice.len);
+            const buf = self.arena.alloc_no_align(id.len) as *u8;
+            mem::cpy::[u8](id.len, buf, id.ptr);
+            const interned_slice = Slice::[u8]::new(buf, id.len);
             
             entry.key_ptr.* = interned_slice;
             var symbol: Symbol = undefined;
@@ -138,5 +139,18 @@ pub struct SharedInterner {
         var clone: SharedInterner = undefined;
         clone.inner = self.inner.clone();
         return clone;
+    }
+
+    // Undefined behavior for invalid `Symbols`
+    pub fn get(self: *const SharedInterner, sym: Symbol) Slice[u8] {
+        var lock = self.inner.get().read();
+        defer lock.release();
+        return lock.item.get(sym);
+    }
+
+    pub fn intern(self: *const SharedInterner, id: Slice[u8]) Symbol {
+        var lock = self.inner.get().write();
+        defer lock.release();
+        return lock.item.intern(id);
     }
 }
