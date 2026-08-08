@@ -5,8 +5,6 @@ pub mod ast;
 pub fn main(argc: i64, argv: **u8) i64 {
     const start = std::time::Instant::now();
     defer @printf("Time to run: %f s\n", start.elapsed().as_secs_f64());
-
-    test();
     
     const settings = args::ArgsParser::new(argc, argv)
         .parse();

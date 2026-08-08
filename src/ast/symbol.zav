@@ -149,7 +149,7 @@ pub struct SymbolInterner {
         return lock.item.get(sym);
     }
 
-    /// Assumes that most calls will be interning an already interned identifier
+    /// More efficient that `Interner::intern` if symbols are used more than declared
     pub fn intern(self: *const SymbolInterner, id: Slice[u8]) Symbol {
         var read_lock = self.inner.get().read();
         const maybe_symbol = read_lock.item.map.peek_or_hash(id);
