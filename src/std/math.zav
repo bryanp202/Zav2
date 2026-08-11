@@ -63,3 +63,51 @@ pub struct Complex[T] {
         return quot;
     }
 }
+
+// pub struct Unsigned128 {
+//     high: u64;
+//     low: u64;
+    
+//     pub fn new(high: u64, low: u64) Unsigned128 {
+//         var self: Unsigned128 = undefined;
+//         self.high = high;
+//         self.low = low;
+//         return self;
+//     }
+
+//     overload+ (self: Unsigned128, other: Unsigned128) Unsigned128 {
+//         var sum: Unsigned128 = undefined;
+//         @u128_add(&sum.high, sum.low, self.high, self.low, other.high, other.low);
+//         return sum;
+//     }
+
+//     overload- (self: Unsigned128, other: Unsigned128) Unsigned128 {
+//         var diff: Unsigned128 = undefined;
+//         @u128_add(&diff.high, diff.low, self.high, self.low, other.high, other.low);
+//         return diff;
+//     }
+
+//     overload== (self: Unsigned128, other: Unsigned128) bool {
+//         return self.high == other.high and self.low == other.low;
+//     }
+
+//     overload!= (self: Unsigned128, other: Unsigned128) bool {
+//         return self.high != other.high or self.low != other.low;
+//     }
+
+//     overload< (self: Unsigned128, other: Unsigned128) bool {
+//         return self.high <= other.high and self.low < other.low;
+//     }
+
+//     overload<= (self: Unsigned128, other: Unsigned128) bool {
+//         return self.high <= other.high and self.low <= other.low;
+//     }
+
+//     overload> (self: Unsigned128, other: Unsigned128) bool {
+//         return self.high >= other.high and self.low > other.low;
+//     }
+
+//     overload>= (self: Unsigned128, other: Unsigned128) bool {
+//         return self.high >= other.high and self.low >= other.low;
+//     }
+// }
