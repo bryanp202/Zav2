@@ -26,7 +26,7 @@ pub struct ParseResult {
         return !self.error_cache.errors.is_empty();
     }
 }
-use ::std::fmt::Formatter;
+
 pub struct Parser {
     errors: List[Error];
     lexer: Lexer;
@@ -48,13 +48,13 @@ pub struct Parser {
         const file_contents = fs::read_file(path.as_cstr());
         if (file_contents.is_err()) {
             path.free();
-            return Result::[ParseResult, IoError]::new_err(file_contents.unwrap_err());
+            return Result::[ParseResult, IoError]::Err(file_contents.unwrap_err());
         }
         const src = file_contents.unwrap_ok();
         defer src.free();
 
         var parser = Parser::new(src.as_slice());
-        return Result::[ParseResult, IoError]::new_ok(parser.parse_ast(path));
+        return Result::[ParseResult, IoError]::Ok(parser.parse_ast(path));
     }
 
     fn parse_ast(self: *Parser, path: PathBuf) ParseResult {

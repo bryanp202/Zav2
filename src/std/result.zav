@@ -11,14 +11,14 @@ pub struct Result[O, E] {
     item: ResultUnion[O, E];
     status: ResultStatus;
 
-    pub fn new_ok(item: O) Result[O, E] {
+    pub fn Ok(item: O) Result[O, E] {
         var result: Result[O, E] = undefined;
         result.item.ok = item;
         result.status = ResultStatus::Ok;
         return result;
     }
 
-    pub fn new_err(item: E) Result[O, E] {
+    pub fn Err(item: E) Result[O, E] {
         var result: Result[O, E] = undefined;
         result.item.err = item;
         result.status = ResultStatus::Err;

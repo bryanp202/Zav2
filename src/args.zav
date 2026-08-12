@@ -167,14 +167,14 @@ fn parse_stage(arg: *const u8) Option[Stage] {
     const cstr_arg = CStr::unsafe_from_ptr(arg);
     switch (arg[0]) {
         'l' => switch (arg[1]) {
-            'e' => if (cstr_arg.unsafe_eql_ptr("lexing")) return Option::[Stage]::new_some(Stage::Lexing);
-            'i' => if (cstr_arg.unsafe_eql_ptr("linking")) return Option::[Stage]::new_some(Stage::Linking);
+            'e' => if (cstr_arg.unsafe_eql_ptr("lexing")) return Option::[Stage]::Some(Stage::Lexing);
+            'i' => if (cstr_arg.unsafe_eql_ptr("linking")) return Option::[Stage]::Some(Stage::Linking);
         }
-        'p' => if (cstr_arg.unsafe_eql_ptr("parsing")) return Option::[Stage]::new_some(Stage::Parsing);
-        's' => if (cstr_arg.unsafe_eql_ptr("semantic")) return Option::[Stage]::new_some(Stage::Semantic);
-        'a' => if (cstr_arg.unsafe_eql_ptr("assembling")) return Option::[Stage]::new_some(Stage::Assembling);
+        'p' => if (cstr_arg.unsafe_eql_ptr("parsing")) return Option::[Stage]::Some(Stage::Parsing);
+        's' => if (cstr_arg.unsafe_eql_ptr("semantic")) return Option::[Stage]::Some(Stage::Semantic);
+        'a' => if (cstr_arg.unsafe_eql_ptr("assembling")) return Option::[Stage]::Some(Stage::Assembling);
         
     }
 
-    return Option::[Stage]::new_none();
+    return Option::[Stage]::None();
 }

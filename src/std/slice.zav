@@ -17,7 +17,7 @@ pub struct SplitIterator[T] {
             const ptr = self.curr;
             self.curr = self.curr + @sizeof(self.curr.*) * i;
             self.remaining -= i as u64;
-            return Option::[Slice[T]]::new_some(Slice::[T]::new(ptr, (i - 1) as u64));
+            return Option::[Slice[T]]::Some(Slice::[T]::new(ptr, (i - 1) as u64));
         }
 
         if (self.curr != nullptr) {
@@ -25,9 +25,9 @@ pub struct SplitIterator[T] {
             const old_remaining = self.remaining;
             self.curr = nullptr;
             self.remaining = 0 as u64;
-            return Option::[Slice[T]]::new_some(Slice::[T]::new(old_curr, old_remaining));
+            return Option::[Slice[T]]::Some(Slice::[T]::new(old_curr, old_remaining));
         }
-        return Option::[Slice[T]]::new_none();
+        return Option::[Slice[T]]::None();
     } 
 }
 

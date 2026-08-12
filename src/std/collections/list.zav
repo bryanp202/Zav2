@@ -105,10 +105,10 @@ pub struct List[T] {
 
     pub fn pop(self: *List[T]) Option[T] {
         if (self.len == 0 as u64) {
-            return Option::[T]::new_none();
+            return Option::[T]::None();
         }
         self.len -= 1 as u64;
-        return Option::[T]::new_some(self.items[self.len]);
+        return Option::[T]::Some(self.items[self.len]);
     }
 
     /// Invalid to call on out of bounds index

@@ -73,14 +73,14 @@ pub struct HashMap[K, V, H] {
             const old_data = Tuple2::[K, V]::new(entry.key, entry.val);
             entry.key = k;
             entry.val = v;
-            return Option::[Tuple2[K, V]]::new_some(old_data);
+            return Option::[Tuple2[K, V]]::Some(old_data);
         }
         entry.key = k;
         entry.val = v;
         entry.type = EntryType::Some;
         self.len += 1 as u64;
 
-        return Option::[Tuple2[K, V]]::new_none();
+        return Option::[Tuple2[K, V]]::None();
     }
 
     /// Returns the overwritten value, if there is one
@@ -96,23 +96,23 @@ pub struct HashMap[K, V, H] {
             const old_data = Tuple2::[K, V]::new(entry.key, entry.val);
             entry.key = k;
             entry.val = v;
-            return Option::[Tuple2[K, V]]::new_some(old_data);
+            return Option::[Tuple2[K, V]]::Some(old_data);
         }
         entry.key = k;
         entry.val = v;
         entry.type = EntryType::Some;
         self.len += 1 as u64;
 
-        return Option::[Tuple2[K, V]]::new_none();
+        return Option::[Tuple2[K, V]]::None();
     }
 
     pub fn get(self: *HashMap[K, V, H], k: K) Option[*V] {
         const entry = self.find_entry(&k, self.hash_key(&k));
 
         if (entry.is_none()) {
-            return Option::[*V]::new_none(); 
+            return Option::[*V]::None(); 
         }
-        return Option::[*V]::new_some(&entry.unwrap().val);
+        return Option::[*V]::Some(&entry.unwrap().val);
     }
 
     /// Used to first check if a value exists, and returns a hash hint if not present
@@ -121,9 +121,9 @@ pub struct HashMap[K, V, H] {
 
         const entry = self.find_entry(&k, k_hash);
         if (entry.is_none()) {
-            return Result::[*const V, u64]::new_err(k_hash);
+            return Result::[*const V, u64]::Err(k_hash);
         }
-        return Result::[*const V, u64]::new_ok(&entry.unwrap().val);
+        return Result::[*const V, u64]::Ok(&entry.unwrap().val);
     }
 
     /// Must initialize the value if `existed == false`
@@ -200,7 +200,7 @@ pub struct HashMap[K, V, H] {
 
     fn find_entry(self: *const HashMap[K, V, H], k: *const K, k_hash: u64) Option[*Entry[K, V]] {
         if (self.capacity == 0) {
-            return Option::[*Entry[K, V]]::new_none();
+            return Option::[*Entry[K, V]]::None();
         }
 
         var i = k_hash % self.capacity;
@@ -211,11 +211,11 @@ pub struct HashMap[K, V, H] {
             }
 
             if (self.items[i].matches(k, k_hash)) {
-                return Option::[*Entry[K, V]]::new_some(&self.items[i]);
+                return Option::[*Entry[K, V]]::Some(&self.items[i]);
             }
         } loop i = (i + 1 as u64) % self.capacity;
 
-        return Option::[*Entry[K, V]]::new_none();
+        return Option::[*Entry[K, V]]::None();
     }
 }
 
@@ -290,11 +290,11 @@ pub struct EntryIter[K, V] {
             const entry = &self.entries[self.curr];
             if (entry.type == EntryType::Some) {
                 self.curr += 1 as u64;
-                return Option::[*const Entry[K, V]]::new_some(entry);
+                return Option::[*const Entry[K, V]]::Some(entry);
             }
         } loop self.curr += 1 as u64;
 
-        return Option::[*const Entry[K, V]]::new_none();
+        return Option::[*const Entry[K, V]]::None();
     }
 }
 

@@ -328,7 +328,7 @@ pub struct Lexer {
                             self.advance();
                         }
                         if (error) {
-                            return Result::[void, ErrorType]::new_err(ErrorType::UnterminatedBlockComment);
+                            return Result::[void, ErrorType]::Err(ErrorType::UnterminatedBlockComment);
                         }
                     }
                     continue;
@@ -337,7 +337,7 @@ pub struct Lexer {
             break;
         }
         self.start = self.curr;
-        return Result::[void, ErrorType]::new_ok(nullptr as void);
+        return Result::[void, ErrorType]::Ok(nullptr as void);
     }
 
     fn at_end(self: *const Lexer) bool {
