@@ -3,6 +3,7 @@ use super::super::option::Option;
 use super::super::fmt::Formatter;
 use super::super::math::max;
 use super::super::mem;
+use super::super::concepts;
 
 pub struct List[T] {
     items: *T;
@@ -51,13 +52,19 @@ pub struct List[T] {
         return clone;
     }
 
-    pub fn eql(self: *const List[T], other: *const List[T]) bool {
+    pub fn eql(self: *const List[T], other: *const List[T]) bool
+    where
+        concepts::Eql::[T, T]
+    {
         const self_slice = self.as_slice();
         const other_slice = other.as_slice();
         return self_slice.eql(&other_slice);
     }
 
-    pub fn fmt(self: *const List[T], fmt: *Formatter) void {
+    pub fn fmt(self: *const List[T], fmt: *Formatter) void
+    where
+        concepts::Fmt::[T]
+    {
         self.as_slice().fmt(fmt);
     }
 

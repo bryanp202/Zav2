@@ -4,6 +4,7 @@ use super::hash;
 use super::str;
 use super::fmt::Formatter;
 use super::cmp::Ordering;
+use super::concepts;
 
 pub struct SplitIterator[T] {
     curr: *const T;
@@ -50,7 +51,10 @@ pub struct Slice[T] {
         return iter;
     }
 
-    pub fn /* compif(T::eql, 0 as T != 0 as T) */ eql(self: *const Slice[T], other: *const Slice[T]) bool {
+    pub fn eql(self: *const Slice[T], other: *const Slice[T]) bool
+    where
+        concepts::Eql::[T, T],
+    {
         if (self.len != other.len) {
             return false;
         }
@@ -69,7 +73,11 @@ pub struct Slice[T] {
         return true;
     }
 
-    pub fn [H] hash(self: *const Slice[T], hasher: *H) void {
+    pub fn [H] hash(self: *const Slice[T], hasher: *H) void
+    where
+        concepts::Hasher::[H],
+        T::hash,
+    {
         compif (T::hash) {
             for (0..self.len, self.ptr) |_, item| {
                 T::hash(item, hasher);
@@ -80,7 +88,10 @@ pub struct Slice[T] {
         
     }
 
-    pub fn fmt(self: *const Slice[T], fmt: *Formatter) void {
+    pub fn fmt(self: *const Slice[T], fmt: *Formatter) void
+    where
+        concepts::Fmt::[T]
+    {
         if (self.len == 0 as u64) {
             fmt.unsafe_cstr_ptr("[]");
             return;
@@ -94,18 +105,6 @@ pub struct Slice[T] {
             for (1..self.len, &self.ptr[1]) |_, item| {
                 fmt.unsafe_cstr_ptr(", ");
                 Formatter::format::[T](fmt, item);
-            }
-            fmt.unsafe_cstr_ptr("]");
-        } else {
-            fmt.unsafe_cstr_ptr("[");
-            fmt.unsafe_cstr_ptr("UserKind(");
-            fmt.uint(@sizeof(nullptr as T));
-            fmt.unsafe_cstr_ptr(" bytes)");
-            for (1..self.len, &self.ptr[1]) |_, item| {
-                fmt.unsafe_cstr_ptr(", ");
-                fmt.unsafe_cstr_ptr("UserKind(");
-                fmt.uint(@sizeof(nullptr as T));
-                fmt.unsafe_cstr_ptr(" bytes)");
             }
             fmt.unsafe_cstr_ptr("]");
         }
