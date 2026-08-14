@@ -1,5 +1,6 @@
 pub mod cmp;
 pub mod collections;
+pub mod concepts;
 pub mod fmt;
 pub mod hash;
 pub mod io;
@@ -8,6 +9,7 @@ pub mod math;
 pub mod mem;
 pub mod option;
 pub mod path;
+pub mod range;
 pub mod rc;
 pub mod result;
 pub mod slice;

@@ -1,0 +1,10 @@
+pub struct Range[T] {
+    min: T;
+    max: T;
+
+    pub fn new(min: T, max: T) Range[T] {
+        var self: Range[T] = undefined;
+        self.min = min;
+        self.max = max;
+    }
+}
