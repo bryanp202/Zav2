@@ -1,0 +1,98 @@
+pub fn [T] IsCloneable() void {
+    const item: T = undefined;
+    compif (item.*) {}
+    else compif (item: bool) {}
+    else compif (item: u8) {}
+    else compif (item: u16) {}
+    else compif (item: u32) {}
+    else compif (item: u64) {}
+    else compif (item: i8) {}
+    else compif (item: i16) {}
+    else compif (item: i32) {}
+    else compif (item: i64) {}
+    else compif (item: f32) {}
+    else compif (item: f64) {}
+    else compif (item: void) {}
+    else {
+        const item: T = T::clone(nullptr as *const T);
+    }
+}
+
+pub fn [T] make_clone(item: *const T) T
+where
+    IsCloneable::[T],
+{
+    compif (T::clone) {
+        return item.clone();
+    } else {
+        return item.*;
+    }
+}
+
+pub fn [L, R] IsEquatable() void {
+    compif (L::eql(nullptr as *const L, nullptr as *const R): bool) {}
+    else {
+        nullptr as R == nullptr as L;
+        nullptr as R != nullptr as L;
+    }
+}
+
+pub fn [L, R] eql(lhs: *const L, rhs: *const R) bool
+where
+    IsEquatable::[L, R],
+{
+    compif (L::eql) {
+        return lhs.eql(rhs);
+    } else {
+        return lhs.* == rhs.*;
+    }
+}
+
+pub enum Ordering {
+    Less,
+    Equal,
+    Greater
+}
+
+pub fn [L, R] IsComparable() void {
+    compif (L::cmp(nullptr as *const L, nullptr as *const R): Ordering) {}
+    else {
+        nullptr as R < nullptr as L;
+        nullptr as R <= nullptr as L;
+        nullptr as R > nullptr as L;
+        nullptr as R >= nullptr as L;
+        Eql::[L, R];
+    }
+}
+
+pub fn [L, R] cmp(lhs: *const L, rhs: *const R) bool {
+    compif (L::cmp) {
+        return lhs.cmp(rhs);
+    } else {
+        return lhs == rhs;
+    }
+}
+
+pub fn [A, B] IsDrop2() void {
+    compif (A::free) {}
+    else {
+        B::free;
+    }
+}
+
+pub fn [A, B, C] IsDrop3() void {
+    compif (A::free) {}
+    else compif (B::free) {}
+    else {
+        C::free;
+    }
+}
+
+pub fn [A, B, C, D] IsDrop4() void {
+    compif (A::free) {}
+    else compif (B::free) {}
+    else compif (C::free) {}
+    else {
+        D::free;
+    }
+}

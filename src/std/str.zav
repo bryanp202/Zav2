@@ -2,6 +2,7 @@ use super::slice::Slice;
 use super::mem;
 use super::math::max;
 use super::fmt::Formatter;
+use super::hash::Hasher;
 
 /// A mutatable string
 /// Owns the data it holds
@@ -44,12 +45,15 @@ pub struct String {
         return mem::eql::[u8](self.len, self.bytes, other.bytes);
     }
 
-    pub fn [H] hash(self: *const String, hasher: *const H) u64 {
-        return hasher.hash_one(self.bytes, self.len);
+    pub fn [H] hash(self: *const String, hasher: *H) void
+    where
+        Hasher::[H],
+    {
+        Slice::[u8]::hash::[H](&self.as_slice(), hasher);
     }
 
     pub fn fmt(self: *const String, fmt: *Formatter) void {
-        fmt.slice(self.as_slice());
+        self.as_slice().fmt(fmt);
     }
 
     pub fn from_slice(slice: Slice[u8]) String {
@@ -143,12 +147,15 @@ pub struct CString {
         return mem::eql::[u8](self.len, self.bytes, other.bytes);
     }
 
-    pub fn [H] hash(self: *const CString, hasher: *const H) u64 {
-        return hasher.hash_one(self.bytes, self.len);
+    pub fn [H] hash(self: *const CString, hasher: *H) void
+    where
+        Hasher::[H],
+    {
+        CStr::hash::[H](&self.as_cstr(), hasher);
     }
 
     pub fn fmt(self: *const CString, fmt: *Formatter) void {
-        fmt.cstr(self.as_cstr());
+        self.as_cstr().fmt(fmt);
     }
 
     pub fn from_slice(slice: Slice[u8]) CString {
@@ -235,12 +242,17 @@ pub struct CStr {
         return mem::eql::[u8](self.len, self.ptr, other.ptr);
     }
 
-    pub fn [H] hash(self: *const CStr, hasher: *const H) u64 {
-        return hasher.hash_one(self.ptr, self.len);
+    pub fn [H] hash(self: *const CStr, hasher: *H) void
+    where
+        Hasher::[H],
+    {
+        hasher.update_state(self.ptr, self.len);
     }
 
     pub fn fmt(self: *const CStr, fmt: *Formatter) void {
+        fmt.char('"');
         fmt.cstr(self.*);
+        fmt.char('"');
     } 
 
     pub fn as_slice(self: *const CStr) Slice[u8] {

@@ -1,3 +1,5 @@
+use super::ops::IsDrop2;
+
 union ResultUnion[O, E] {
     ok: O;
     err: E;
@@ -23,6 +25,21 @@ pub struct Result[O, E] {
         result.item.err = item;
         result.status = ResultStatus::Err;
         return result;
+    }
+
+    pub fn free(self: *const Result[O, E]) void
+    where
+        EitherIsDrop::[O, E],
+    {
+        if (self.is_ok()) {
+            compif (O::free) {
+                self.item.ok.free();
+            }
+        } else {
+            compif (E::free) {
+                self.item.err.free();
+            }
+        }
     }
 
     pub fn is_ok(self: *const Result[O, E]) bool {

@@ -2,10 +2,14 @@ pub mod std;
 pub mod args;
 pub mod ast;
 
+use std::slice::Slice;
+use std::str::CStr;
+use std::hash::SipHasher;
+
 pub fn main(argc: i64, argv: **u8) i64 {
     const start = std::time::Instant::now();
     defer @printf("Time to run: %f s\n", start.elapsed().as_secs_f64());
-    
+
     const settings = args::ArgsParser::new(argc, argv)
         .parse();
     defer settings.debug();
@@ -13,6 +17,21 @@ pub fn main(argc: i64, argv: **u8) i64 {
     if (settings.display_help) {
         args::display_help();
         return 1;
+    }
+
+    const result = ast::parser::Parser::parse(std::path::PathBuf::from_cstr(settings.root_path));
+    if (result.is_err()) {
+        @printf("IoError: %d\n", result.unwrap_err());
+        return 1;
+    }
+    const parse_result = result.unwrap_ok();
+    defer parse_result.free();
+
+    if (parse_result.had_error()) {
+        var fmt = std::fmt::Formatter::new_for_terminal();
+        defer fmt.free();
+        parse_result.error_cache.fmt(&fmt);
+        fmt.print();
     }
 
     return 0;

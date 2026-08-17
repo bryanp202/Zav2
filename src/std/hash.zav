@@ -3,6 +3,58 @@
 //! fn update_state(self: *Self, data: *const u8, len: u64) void; // Update the hasher with various non-continuous memory chunks (hasher updates) 
 //! fn finish(self: *Self) u64; // Finish a hash made with update_state (hasher is not reset)
 
+pub fn [H] Hasher() void {
+    const _: u64 = H::hash_one(nullptr as *const H, nullptr as *const u8, 0 as u64);
+    const _: void = H::update_state(nullptr as *H, nullptr as *const u8, 0 as u64);
+    const _: u64 = H::finish(nullptr as *H);
+}
+
+pub fn [T] IsHashable() void {
+    const item: T = undefined;
+    compif (item.*) {}
+    else compif (item: bool) {}
+    else compif (item: u8) {}
+    else compif (item: u16) {}
+    else compif (item: u32) {}
+    else compif (item: u64) {}
+    else compif (item: i8) {}
+    else compif (item: i16) {}
+    else compif (item: i32) {}
+    else compif (item: i64) {}
+    else compif (item: f32) {}
+    else compif (item: f64) {}
+    else compif (item: void) {}
+    else {
+        T::hash::[SipHasher];
+    }
+}
+
+pub fn [T, H] hash_one_with(hashee: *const T, hasher: *const H) u64
+where
+    IsHashable::[T],
+    Hasher::[H],
+{
+    compif (T::hash::[SipHasher]) {
+        var hasher_copy = hasher.*;
+        T::hash::[H](hashee, &hasher_copy);
+        return hasher_copy.finish();
+    } else {
+        return hasher.hash_one(hashee as *const u8, @sizeof(hashee.*));
+    }
+}
+
+pub fn [T, H] hash_update_with(hashee: *const T, hasher: *H) void
+where
+    IsHashable::[T],
+    Hasher::[H],
+{
+    compif (T::hash::[SipHasher]) {
+        T::hash::[H](hashee, hasher);
+    } else {
+        hasher.update_state(hashee as *const u8, @sizeof(hashee.*));
+    }
+}
+
 pub struct SipHasher {
     key0: u64;
     key1: u64;

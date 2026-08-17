@@ -1,6 +1,16 @@
 use super::super::option::Option;
 use super::super::result::Result;
 use super::super::tuple::Tuple2;
+use super::super::fmt::Formatter;
+
+use super::super::fmt::IsFormattable;
+use super::super::hash::IsHashable;
+use super::super::hash::Hasher;
+use super::super::hash::hash_one_with;
+use super::super::ops::IsCloneable;
+use super::super::ops::make_clone;
+use super::super::ops::IsEquatable;
+use super::super::ops::eql;
 
 /// HashMap owns all values given to it
 pub struct HashMap[K, V, H] {
@@ -33,13 +43,17 @@ pub struct HashMap[K, V, H] {
     }
 
     pub fn free(self: *const HashMap[K, V, H]) void {
-        for (0..self.len, self.items) |_, entry| {
+        for (0..self.capacity, self.items) |_, entry| {
             entry.free();
         }
         @free(self.items);
     }
 
-    pub fn clone(self: *const HashMap[K, V, H]) HashMap[K, V, H] {
+    pub fn clone(self: *const HashMap[K, V, H]) HashMap[K, V, H]
+    where
+        IsCloneable::[K],
+        IsCloneable::[V],
+    {
         var clone: HashMap[K, V, H] = undefined;
         clone.items = @malloc(@sizeof(self.items.*) * self.capacity) as *Entry[K, V];
         clone.len = self.len;
@@ -53,6 +67,40 @@ pub struct HashMap[K, V, H] {
         return clone;
     }
 
+    pub fn fmt(self: *const HashMap[K, V, H], fmt: *Formatter) void
+    where
+        IsFormattable::[K],
+        IsFormattable::[V],
+    {
+        if (self.is_empty()) {
+            fmt.unsafe_cstr_ptr("[]");
+            return;
+        }
+        fmt.char('[');
+
+        var iter = self.iter();
+        const first_entry = iter.next().unwrap();
+        fmt.unsafe_cstr_ptr("{ key: ");
+        Formatter::format::[K](fmt, &first_entry.key);
+        fmt.unsafe_cstr_ptr(", val: ");
+        Formatter::format::[V](fmt, &first_entry.val);
+        fmt.unsafe_cstr_ptr(" }");
+
+        var curr = iter.next();
+        while (curr.is_some()) {
+            fmt.unsafe_cstr_ptr(", ");
+            const entry = curr.unwrap();
+
+            fmt.unsafe_cstr_ptr("{ key: ");
+            Formatter::format::[K](fmt, &entry.key);
+            fmt.unsafe_cstr_ptr(", val: ");
+            Formatter::format::[V](fmt, &entry.val);
+            fmt.unsafe_cstr_ptr(" }");
+        } loop curr = iter.next();
+
+        fmt.char(']');
+    }
+
     pub fn is_empty(self: *const HashMap[K, V, H]) bool {
         return self.len == 0 as u64;
     }
@@ -61,7 +109,7 @@ pub struct HashMap[K, V, H] {
         return EntryIter::[K, V]::new(self.capacity, self.items);
     }
 
-    /// Returns the overwritten value, if there is one
+    /// Returns the overwritten value, if there is one.
     /// Takes ownership of the key and value
     pub fn insert(self: *HashMap[K, V, H], k: K, v: V) Option[Tuple2[K, V]] {
         if (self.capacity == 0 or (self.len + 1.0) / self.capacity > self.max_density) {
@@ -107,7 +155,7 @@ pub struct HashMap[K, V, H] {
     }
 
     pub fn get(self: *HashMap[K, V, H], k: K) Option[*V] {
-        const entry = self.find_entry(&k, self.hash_key(&k));
+        const entry = self.find_entry(&k, hash_one_with::[K, H](&k, &self.hasher));
 
         if (entry.is_none()) {
             return Option::[*V]::None(); 
@@ -117,7 +165,7 @@ pub struct HashMap[K, V, H] {
 
     /// Used to first check if a value exists, and returns a hash hint if not present
     pub fn peek_or_hash(self: *const HashMap[K, V, H], k: K) Result[*const V, u64] {
-        const k_hash = self.hash_key(&k);
+        const k_hash = hash_one_with::[K, H](&k, &self.hasher);
 
         const entry = self.find_entry(&k, k_hash);
         if (entry.is_none()) {
@@ -135,9 +183,6 @@ pub struct HashMap[K, V, H] {
         const entry = self.make_entry(&k);
         const existed = entry.type == EntryType::Some;
         if (!existed) {
-            compif (K::free) {
-                entry.key.free();
-            }
             entry.key = k;
             self.len += 1 as u64;
             entry.type = EntryType::Some;
@@ -169,25 +214,15 @@ pub struct HashMap[K, V, H] {
         @free(old_items);
     }
 
-    fn hash_key(self: *const HashMap[K, V, H], k: *const K) u64 {
-        compif (K::hash::[H]) {
-            var hasher = self.hasher;
-            K::hash::[H](k, &hasher);
-            return hasher.finish();
-        } else {
-            return self.hasher.hash_one(k as *const u8, @sizeof(k.*));
-        }
-    }
-
     fn make_entry(self: *const HashMap[K, V, H], k: *const K) *Entry[K, V] {
-        return self.make_entry_with_hash(k, self.hash_key(k));
+        return self.make_entry_with_hash(k, hash_one_with::[K, H](k, &self.hasher));
     }
 
     fn make_entry_with_hash(self: *const HashMap[K, V, H], k: *const K, k_hash: u64) *Entry[K, V] {
         var i = k_hash % self.capacity;
 
         while (self.items[i].type == EntryType::Some) {
-            if (self.items[i].matches(k, k_hash)) {
+            if (self.items[i].eql(k, k_hash)) {
                 return &self.items[i];
             }
         } loop i = (i + 1 as u64) % self.capacity;
@@ -210,7 +245,7 @@ pub struct HashMap[K, V, H] {
                 continue;
             }
 
-            if (self.items[i].matches(k, k_hash)) {
+            if (self.items[i].eql(k, k_hash)) {
                 return Option::[*Entry[K, V]]::Some(&self.items[i]);
             }
         } loop i = (i + 1 as u64) % self.capacity;
@@ -232,6 +267,9 @@ pub struct Entry[K, V] { // TODO ZAV2 make not public
     type: EntryType;
 
     pub fn free(self: *const Entry[K, V]) void {
+        if (self.type != EntryType::Some) {
+            return;
+        }
         compif (K::free) {
             self.key.free();
         }
@@ -240,7 +278,11 @@ pub struct Entry[K, V] { // TODO ZAV2 make not public
         }
     }
 
-    pub fn clone(self: *const Entry[K, V]) Entry[K, V] {
+    pub fn clone(self: *const Entry[K, V]) Entry[K, V]
+    where
+        IsCloneable::[K],
+        IsCloneable::[V],
+    {
         var clone: Entry[K, V] = undefined;
         clone.type = self.type;
 
@@ -248,27 +290,18 @@ pub struct Entry[K, V] { // TODO ZAV2 make not public
             return clone;
         }
 
-        compif (K::clone) {
-            clone.key = self.key.clone();
-        } else {
-            clone.key = self.key;
-        }
-        compif (V::clone) {
-            clone.val = self.val.clone();
-        } else {
-            clone.val = self.val;
-        }
+        clone.key = make_clone::[K](&self.key);
+        clone.val = make_clone::[V](&self.val);
 
         clone.hash = self.hash;
         return clone;
     }
 
-    pub fn matches(self: *const Entry[K, V], k: *const K, k_hash: u64) bool {
-        compif (K::eql) {
-            return self.hash == k_hash and self.key.eql(k);
-        } else {
-            return self.hash == k_hash and self.key == k.*;
-        }
+    pub fn eql(self: *const Entry[K, V], k: *const K, k_hash: u64) bool
+    where
+        IsEquatable::[K, K],
+    {
+        return self.hash == k_hash and eql::[K, K](&self.key, k);
     }
 }
 

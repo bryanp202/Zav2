@@ -3,7 +3,11 @@ use super::super::option::Option;
 use super::super::fmt::Formatter;
 use super::super::math::max;
 use super::super::mem;
-use super::super::concepts;
+
+use super::super::fmt::IsFormattable;
+use super::super::ops::IsCloneable;
+use super::super::ops::make_clone;
+use super::super::ops::IsEquatable;
 
 pub struct List[T] {
     items: *T;
@@ -35,18 +39,17 @@ pub struct List[T] {
         @free(self.items);
     }
 
-    pub fn clone(self: *const List[T]) List[T] {
+    pub fn clone(self: *const List[T]) List[T]
+    where
+        IsCloneable::[T],
+    {
         var clone: List[T] = undefined;
         clone.items = @malloc(@sizeof(0 as T) * self.capacity) as *T;
         clone.len = self.len;
         clone.capacity = self.capacity;
         
         for (0..self.len, self.items) |i, item| {
-            compif (T::clone) {
-                clone.items[i] = item.clone();
-            } else {
-                clone.items[i] = item.*;
-            }
+            clone.items[i] = make_clone::[T](item);
         }
 
         return clone;
@@ -54,7 +57,7 @@ pub struct List[T] {
 
     pub fn eql(self: *const List[T], other: *const List[T]) bool
     where
-        concepts::Eql::[T, T]
+        IsEquatable::[T, T]
     {
         const self_slice = self.as_slice();
         const other_slice = other.as_slice();
@@ -63,7 +66,7 @@ pub struct List[T] {
 
     pub fn fmt(self: *const List[T], fmt: *Formatter) void
     where
-        concepts::Fmt::[T]
+        IsFormattable::[T],
     {
         self.as_slice().fmt(fmt);
     }

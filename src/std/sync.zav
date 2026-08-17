@@ -6,6 +6,13 @@ use super::time::Duration;
 use super::result::Result;
 use atomic::AtomicU64;
 
+use super::fmt::Formatter;
+use super::fmt::IsFormattable;
+use super::hash::IsHashable;
+use super::hash::hash_update_with;
+use super::ops::IsEquatable;
+use super::ops::eql;
+
 pub enum Error {
     FailedToLock
 }
@@ -186,58 +193,6 @@ pub struct RwLockReadGuard[T] {
     }
 }
 
-struct ArcInternal[T] {
-    item: T;
-    count: AtomicU64;
-}
-
-pub struct Arc[T] {
-    _inner: *ArcInternal[T];
-
-    pub fn new(item: T) Arc[T] {
-        var self: Arc[T] = undefined;
-        self._inner = @malloc(@sizeof(self._inner.*)) as *ArcInternal[T];
-        self._inner.item = item;
-        self._inner.count = AtomicU64::new(1 as u64);
-        return self;
-    }
-
-    pub fn clone(self: *const Arc[T]) Arc[T] {
-        self._inner.count.fetch_add(1 as u64);
-        return self.*;
-    }
-
-    pub fn free(self: *const Arc[T]) void {
-        if (self._inner.count.fetch_add(-1 as u64) == 1 as u64) {
-            compif (T::free) {
-                self._inner.item.free();
-            }
-            @free(self._inner);
-        }
-    }
-
-    pub fn get(self: *const Arc[T]) *T {
-        return &self._inner.item;
-    }
-
-    /// Use if you want to free an arc where `T::free` is unsafe to call
-    pub fn unsafe_free_no_clean_up(self: *const Arc[T]) void {
-        if (self._inner.count.fetch_add(-1 as u64) == 1 as u64) {
-            compif (T::free) {
-                self._inner.item.free();
-            }
-            @free(self._inner);
-        }
-    }
-
-    pub fn unsafe_new_uninit() Arc[T] {
-        var self: Arc[T] = undefined;
-        self._inner = @malloc(@sizeof(self._inner.*)) as *ArcInternal[T];
-        self._inner.count = AtomicU64::new(1 as u64);
-        return self;
-    }
-}
-
 pub struct Barrier {
     mutex: Mutex[BarrierState];
     cvar: CondVar;
@@ -278,4 +233,77 @@ pub struct Barrier {
 struct BarrierState {
     count: u64;
     current_gen: u64;
+}
+
+struct ArcInternal[T] {
+    item: T;
+    count: AtomicU64;
+}
+
+pub struct Arc[T] {
+    _inner: *ArcInternal[T];
+
+    pub fn new(item: T) Arc[T] {
+        var self: Arc[T] = undefined;
+        self._inner = @malloc(@sizeof(self._inner.*)) as *ArcInternal[T];
+        self._inner.item = item;
+        self._inner.count = AtomicU64::new(1 as u64);
+        return self;
+    }
+
+    pub fn free(self: *const Arc[T]) void {
+        if (self._inner.count.fetch_add(-1 as u64) == 1 as u64) {
+            compif (T::free) {
+                self._inner.item.free();
+            }
+            @free(self._inner);
+        }
+    }
+
+    pub fn clone(self: *const Arc[T]) Arc[T] {
+        self._inner.count.fetch_add(1 as u64);
+        return self.*;
+    }
+
+    pub fn [H] hash(self: *const Arc[T], hasher: *H) void
+    where
+        IsHashable::[T],
+    {
+        hash_update_with::[T, H](&self._inner.item, hasher);
+    }
+
+    pub fn eql(self: *const Arc[T], other: *const Arc[T]) bool
+    where
+        IsEquatable::[T, T],
+    {
+        return eql::[T, T](&self._inner.item, &other._inner.item);
+    }
+
+    pub fn fmt(self: *const Arc[T], fmt: *Formatter) void
+    where
+        IsFormattable::[T],
+    {
+        Formatter::format::[T](fmt, &self._inner.item);
+    }
+
+    pub fn get(self: *const Arc[T]) *T {
+        return &self._inner.item;
+    }
+
+    /// Use if you want to free an arc where `T::free` is unsafe to call
+    pub fn unsafe_free_no_clean_up(self: *const Arc[T]) void {
+        if (self._inner.count.fetch_add(-1 as u64) == 1 as u64) {
+            compif (T::free) {
+                self._inner.item.free();
+            }
+            @free(self._inner);
+        }
+    }
+
+    pub fn unsafe_new_uninit() Arc[T] {
+        var self: Arc[T] = undefined;
+        self._inner = @malloc(@sizeof(self._inner.*)) as *ArcInternal[T];
+        self._inner.count = AtomicU64::new(1 as u64);
+        return self;
+    }
 }

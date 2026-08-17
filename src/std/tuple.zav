@@ -1,3 +1,7 @@
+use super::ops::IsDrop2;
+use super::ops::IsDrop3;
+use super::ops::IsDrop4;
+
 pub struct Tuple2[A, B] {
     _0: A;
     _1: B;
@@ -7,6 +11,18 @@ pub struct Tuple2[A, B] {
         self._0 = a;
         self._1 = b;
         return self;
+    }
+
+    pub fn free(self: *const Tuple2[A, B]) void
+    where
+        IsDrop2::[A, B],
+    {
+        compif (A::free) {
+            self._0.free();
+        }
+        compif (B::free) {
+            self._1.free();
+        }
     }
 }
 
@@ -21,6 +37,21 @@ pub struct Tuple3[A, B, C] {
         self._1 = b;
         self._2 = c;
         return self;
+    }
+
+    pub fn free(self: *const Tuple3[A, B, C]) void
+    where
+        IsDrop3::[A, B, C],
+    {
+        compif (A::free) {
+            self._0.free();
+        }
+        compif (B::free) {
+            self._1.free();
+        }
+        compif (C::free) {
+            self._2.free();
+        }
     }
 }
 
@@ -37,5 +68,23 @@ pub struct Tuple4[A, B, C, D] {
         self._2 = c;
         self._3 = d;
         return self;
+    }
+
+    pub fn free(self: *const Tuple4[A, B, C, D]) void
+    where
+        IsDrop4::[A, B, C, D],
+    {
+        compif (A::free) {
+            self._0.free();
+        }
+        compif (B::free) {
+            self._1.free();
+        }
+        compif (C::free) {
+            self._2.free();
+        }
+        compif (D::free) {
+            self._3.free();
+        }
     }
 }

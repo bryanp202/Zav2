@@ -1,7 +1,26 @@
 use super::slice::Slice;
 use super::str::String;
 use super::str::CStr;
-use super::concepts;
+
+pub fn [T] IsFormattable() void {
+    const item: *T = undefined;
+    compif (item.*.*) {}
+    else compif (item.*: bool) {}
+    else compif (item.*: u8) {}
+    else compif (item.*: u16) {}
+    else compif (item.*: u32) {}
+    else compif (item.*: u64) {}
+    else compif (item.*: i8) {}
+    else compif (item.*: i16) {}
+    else compif (item.*: i32) {}
+    else compif (item.*: i64) {}
+    else compif (item.*: f32) {}
+    else compif (item.*: f64) {}
+    else compif (item.*: void) {}
+    else {
+        const _: void = T::fmt(nullptr as *const T, nullptr as *Formatter);
+    }
+}
 
 pub struct Formatter {
     buf: String;
@@ -46,6 +65,12 @@ pub struct Formatter {
         self.buf.append_cstr(cstr);
     }
 
+    pub fn char(self: *Formatter, char: u32) void {
+        var buf: [5]u8 = undefined;
+        const len = @sprintf(&buf, "%c", char);
+        self.buf.append(Slice::[u8]::new(&buf, len));
+    }
+
     pub fn boolean(self: *Formatter, boolean: bool) void {
         const cstr = boolean
             ? CStr::unsafe_from_ptr("true")
@@ -85,11 +110,9 @@ pub struct Formatter {
     ///
     pub fn [T] format(self: *Formatter, item: *const T) void
     where
-        concepts::Fmt::[T]
+        IsFormattable::[T]
     {
-        compif (T::fmt) {
-            item.fmt(self);
-        } else compif (item.*.*: u8) {
+        compif (item.*.*: u8) {
             self.unsafe_cstr_ptr(item.*);
         } else compif (item.*.*) {
             self.uint(item.* as u64);
@@ -117,6 +140,8 @@ pub struct Formatter {
             self.float(item.*);
         } else compif (item.*: void) {
             self.unsafe_cstr_ptr("void");
+        } else {
+            item.fmt(self);
         }
     }
 

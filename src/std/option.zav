@@ -19,11 +19,12 @@ pub struct Option[T] {
         return option;
     }
 
-    pub fn free(self: *const Option[T]) void {
-        compif (self.item.free()) {
-            if (self.is_some()) {
-                self.item.free();
-            }
+    pub fn free(self: *const Option[T]) void
+    where
+        T::free,
+    {
+        if (self.is_some()) {
+            self.item.free();
         }
     }
 

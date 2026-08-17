@@ -1,3 +1,10 @@
+use super::ops::IsEquatable;
+use super::ops::eql;
+use super::hash::IsHashable;
+use super::hash::hash_update_with;
+use super::fmt::IsFormattable;
+use super::fmt::Formatter;
+
 struct RcInternal[T] {
     item: T;
     count: u64;
@@ -14,11 +21,6 @@ pub struct Rc[T] {
         return self;
     }
 
-    pub fn clone(self: *const Rc[T]) Rc[T] {
-        self._inner.count += 1 as u64;
-        return self.*;
-    }
-
     pub fn free(self: *const Rc[T]) void {
         self._inner.count -= 1 as u64;
         if (self._inner.count == 0 as u64) {
@@ -27,6 +29,32 @@ pub struct Rc[T] {
             }
             @free(self._inner);
         }
+    }
+
+    pub fn clone(self: *const Rc[T]) Rc[T] {
+        self._inner.count += 1 as u64;
+        return self.*;
+    }
+
+    pub fn [H] hash(self: *const Rc[T], hasher: *H) void
+    where
+        IsHashable::[T],
+    {
+        hash_update_with::[T, H](&self._inner.item, hasher);
+    }
+
+    pub fn eql(self: *const Rc[T], other: *const Rc[T]) bool
+    where
+        IsEquatable::[T, T],
+    {
+        return eql::[T, T](&self._inner.item, &other._inner.item);
+    }
+
+    pub fn fmt(self: *const Rc[T], fmt: *Formatter) void
+    where
+        IsFormattable::[T],
+    {
+        Formatter::format::[T](fmt, &self._inner.item);
     }
 
     pub fn get(self: *const Rc[T]) *T {

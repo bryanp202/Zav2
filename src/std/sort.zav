@@ -1,0 +1,50 @@
+use super::slice::Slice;
+use super::ops::Ordering;
+use super::ops::IsComparable;
+use super::ops::cmp;
+
+// Sorts the slice in place
+pub fn [T] sort(items: *T, n: u64) void
+where
+    IsComparable::[T, T],
+{
+    quick_sort::[T](items, n);
+}
+
+fn [T] quick_sort(items: *T, n: i64) void
+where
+    IsComparable::[T, T],
+{
+    if (n > 1) {
+        const split = quick_sort_partition::[T](items, n);
+        quick_sort::[T](items, split + 1);
+        quick_sort::[T](&items[split + 1], n - split - 1);
+    }
+}
+
+fn [T] quick_sort_partition(items: *T, n: i64) i64
+where
+    IsComparable::[T, T],
+{
+    const pivot = &items[0];
+    var i = -1;
+    var j = n;
+    while (true) {
+        i += 1;
+        while (i < n and cmp::[T, T](&items[i], pivot) == Ordering::Less) {
+            i += 1;
+        }
+
+        j -= 1;
+
+        while (j >= 0 and cmp::[T, T](&items[j], pivot) == Ordering::Greater) {
+            j -= 1;
+        }
+
+        if (i >= j) return j;
+
+        const temp = items[i];
+        items[i] = items[j];
+        items[j] = temp;
+    }
+}

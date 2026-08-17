@@ -3,8 +3,13 @@ use super::mem;
 use super::hash;
 use super::str;
 use super::fmt::Formatter;
-use super::cmp::Ordering;
-use super::concepts;
+
+use super::fmt::IsFormattable;
+use super::hash::Hasher;
+use super::hash::IsHashable;
+use super::hash::hash_update_with;
+use super::ops::IsEquatable;
+use super::ops::eql;
 
 pub struct SplitIterator[T] {
     curr: *const T;
@@ -53,7 +58,7 @@ pub struct Slice[T] {
 
     pub fn eql(self: *const Slice[T], other: *const Slice[T]) bool
     where
-        concepts::Eql::[T, T],
+        IsEquatable::[T, T],
     {
         if (self.len != other.len) {
             return false;
@@ -63,42 +68,36 @@ pub struct Slice[T] {
         }
 
         for (0..self.len, self.ptr) |i, item| {
-            compif (T::eql) {
-                if (!item.eql(&other.ptr[i])) return false;
-            } else {
-                if (item.* != other.ptr[i]) return false;
+            if (eql::[T, T](item, &other.ptr[i])) {
+                return false;
             }
-            
         }
         return true;
     }
 
     pub fn [H] hash(self: *const Slice[T], hasher: *H) void
     where
-        concepts::Hasher::[H],
-        T::hash,
+        IsHashable::[T],
+        Hasher::[H],
     {
-        compif (T::hash) {
-            for (0..self.len, self.ptr) |_, item| {
-                T::hash(item, hasher);
-            }
-        } else {
-            hasher.update_state(self.ptr as *const u8, self.len * @sizeof(self.ptr.*));
+        for (0..self.len, self.ptr) |_, item| {
+            hash_update_with::[T, H](item, hasher);
         }
-        
     }
 
     pub fn fmt(self: *const Slice[T], fmt: *Formatter) void
     where
-        concepts::Fmt::[T]
+        IsFormattable::[T],
     {
         if (self.len == 0 as u64) {
             fmt.unsafe_cstr_ptr("[]");
             return;
         }
 
-        compif (T: u8) {
+        compif (nullptr as T: u8) {
+            fmt.char('"');
             fmt.slice(self.*);
+            fmt.char('"');
         } else compif (Formatter::format::[T]) {
             fmt.unsafe_cstr_ptr("[");
             Formatter::format::[T](fmt, &self.ptr[0]);
