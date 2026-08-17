@@ -2,14 +2,10 @@ pub mod std;
 pub mod args;
 pub mod ast;
 
-use std::slice::Slice;
-use std::str::CStr;
-use std::hash::SipHasher;
-
 pub fn main(argc: i64, argv: **u8) i64 {
     const start = std::time::Instant::now();
     defer @printf("Time to run: %f s\n", start.elapsed().as_secs_f64());
-
+    
     const settings = args::ArgsParser::new(argc, argv)
         .parse();
     defer settings.debug();
