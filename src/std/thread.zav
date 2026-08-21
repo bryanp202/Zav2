@@ -1,9 +1,10 @@
+use super::option::Option;
 use super::result::Result;
 use super::sync::Arc;
 use super::time::Duration;
 
 pub enum Error {
-    FailedToJoinThread
+    FailedToJoinThread,
 }
 
 pub fn osId() u64 {
@@ -17,7 +18,7 @@ pub fn sleep(duration: Duration) void {
 /// Must call either free() or join() to clean up resources
 pub struct Thread[I, O] {
     _handle: i64;
-    out: Arc[O];
+    out: Arc[Option[O]];
 
     pub fn new(in: I, worker: fn(I)O) Result[Thread[I, O], I] {
         const thread_args = @malloc(@sizeof(ThreadArgs::[I, O]::new(worker, in))) as *ThreadArgs[I, O];
@@ -28,27 +29,31 @@ pub struct Thread[I, O] {
         self._handle = @createThread(Thread::[I, O]::worker as fn(*void)i64, thread_args as *void);
 
         if (self._handle == 0) {
-            self.out.unsafe_free_no_clean_up();
-            thread_args.out.unsafe_free_no_clean_up();
+            self.out.free();
+            thread_args.out.free();
             return Result::[Thread[I, O], I]::Err(in);
         }
 
         return Result::[Thread[I, O], I]::Ok(self);
     }
 
-    /// Does not free the output value that would be returned by `Thread[I, O]::join`
     pub fn free(self: *const Thread[I, O]) void {
+        self.detach();
+    }
+
+    pub fn detach(self: *const Thread[I, O]) void {
         @closeHandle(self._handle);
-        self.out.unsafe_free_no_clean_up();
+        self.out.free();
     }
 
     /// If join is not called or the value returned from join is not freed,
-    /// memory may leak.
     pub fn join(self: *const Thread[I, O]) Result[O, Error] {
         if (@waitOne(self._handle) != 0) {
             return Result::[O, Error]::Err(Error::FailedToJoinThread);
         }
-        return Result::[O, Error]::Ok(self.out.get().*);
+        const out = self.out.get().take().unwrap();
+        self.detach();
+        return Result::[O, Error]::Ok(out);
     }
 
     pub fn eql(self: *const Thread[I, O], other: *const Thread[I, O]) bool {
@@ -56,8 +61,8 @@ pub struct Thread[I, O] {
     }
 
     fn worker(args: *ThreadArgs[I, O]) i64 {
-        args.out.get().* = args.worker(args.in);
-        args.out.unsafe_free_no_clean_up();
+        args.out.get().* = Option::[O]::Some(args.worker(args.in));
+        args.out.free();
         @free(args);
         return 0;
     }
@@ -66,13 +71,13 @@ pub struct Thread[I, O] {
 struct ThreadArgs[I, O] {
     worker: fn(I)O;
     in: I;
-    out: Arc[O];
+    out: Arc[Option[O]];
 
     pub fn new(worker: fn(I)O, in: I) ThreadArgs[I, O] {
         var self: ThreadArgs[I, O] = undefined;
         self.worker = worker;
         self.in = in;
-        self.out = Arc::[O]::unsafe_new_uninit();
+        self.out = Arc::[Option[O]]::unsafe_new_uninit();
         return self;
     }
 }

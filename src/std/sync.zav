@@ -290,16 +290,6 @@ pub struct Arc[T] {
         return &self._inner.item;
     }
 
-    /// Use if you want to free an arc where `T::free` is unsafe to call
-    pub fn unsafe_free_no_clean_up(self: *const Arc[T]) void {
-        if (self._inner.count.fetch_add(-1 as u64) == 1 as u64) {
-            compif (T::free) {
-                self._inner.item.free();
-            }
-            @free(self._inner);
-        }
-    }
-
     pub fn unsafe_new_uninit() Arc[T] {
         var self: Arc[T] = undefined;
         self._inner = @malloc(@sizeof(self._inner.*)) as *ArcInternal[T];

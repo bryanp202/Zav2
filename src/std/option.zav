@@ -43,4 +43,10 @@ pub struct Option[T] {
     pub fn unwrap_ref(self: *const Option[T]) *const T {
         return &self.item;
     }
+
+    pub fn take(self: *Option[T]) Option[T] {
+        const taken = self.*;
+        self.status = OptionStatus::None;
+        return taken;
+    }
 }
