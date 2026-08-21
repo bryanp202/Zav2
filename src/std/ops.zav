@@ -51,7 +51,7 @@ where
 pub enum Ordering {
     Less,
     Equal,
-    Greater
+    Greater,
 }
 
 pub fn [L, R] IsComparable() void {

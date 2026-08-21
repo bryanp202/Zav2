@@ -30,10 +30,10 @@ pub struct Thread[I, O] {
         if (self._handle == 0) {
             self.out.unsafe_free_no_clean_up();
             thread_args.out.unsafe_free_no_clean_up();
-            return Result::[Thread[I, O], I]::new_err(in);
+            return Result::[Thread[I, O], I]::Err(in);
         }
 
-        return Result::[Thread[I, O], I]::new_ok(self);
+        return Result::[Thread[I, O], I]::Ok(self);
     }
 
     /// Does not free the output value that would be returned by `Thread[I, O]::join`
@@ -46,9 +46,9 @@ pub struct Thread[I, O] {
     /// memory may leak.
     pub fn join(self: *const Thread[I, O]) Result[O, Error] {
         if (@waitOne(self._handle) != 0) {
-            return Result::[O, Error]::new_err(Error::FailedToJoinThread);
+            return Result::[O, Error]::Err(Error::FailedToJoinThread);
         }
-        return Result::[O, Error]::new_ok(self.out.get().*);
+        return Result::[O, Error]::Ok(self.out.get().*);
     }
 
     pub fn eql(self: *const Thread[I, O], other: *const Thread[I, O]) bool {

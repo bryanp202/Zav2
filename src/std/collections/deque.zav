@@ -54,22 +54,22 @@ pub struct RingBuf[T] {
 
     pub fn pop_back(self: *RingBuf[T]) Option[T] {
         if (self.len == 0 as u64) {
-            return Option::[T]::new_none();
+            return Option::[T]::None();
         }
 
         self.len -= 1 as u64;
-        return Option::[T]::new_some(self.items[self.to_buf_index(self.len)]);
+        return Option::[T]::Some(self.items[self.to_buf_index(self.len)]);
     }
 
     pub fn pop_front(self: *RingBuf[T]) Option[T] {
         if (self.len == 0 as u64) {
-            return Option::[T]::new_none();
+            return Option::[T]::None();
         }
 
         self.len -= 1 as u64;
         const old_front = self.front;
         self.front = self.to_buf_index(1 as u64);
-        return Option::[T]::new_some(self.items[old_front]);
+        return Option::[T]::Some(self.items[old_front]);
     }
 
     ///////////////////////
@@ -157,22 +157,22 @@ pub struct Deque[T] {
 
     pub fn pop_back(self: *Deque[T]) Option[T] {
         if (self.len == 0 as u64) {
-            return Option::[T]::new_none();
+            return Option::[T]::None();
         }
 
         self.len -= 1 as u64;
-        return Option::[T]::new_some(self.items[self.to_buf_index(self.len)]);
+        return Option::[T]::Some(self.items[self.to_buf_index(self.len)]);
     }
 
     pub fn pop_front(self: *Deque[T]) Option[T] {
         if (self.len == 0 as u64) {
-            return Option::[T]::new_none();
+            return Option::[T]::None();
         }
 
         self.len -= 1 as u64;
         const old_front = self.front;
         self.front = self.to_buf_index(1 as u64);
-        return Option::[T]::new_some(self.items[old_front]);
+        return Option::[T]::Some(self.items[old_front]);
     }
 
     ///////////////////////
