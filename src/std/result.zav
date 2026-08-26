@@ -1,4 +1,4 @@
-use super::ops::IsDrop2;
+use super::ops::IsAnyDrop2;
 
 union ResultUnion[O, E] {
     ok: O;
@@ -29,7 +29,7 @@ pub struct Result[O, E] {
 
     pub fn free(self: *const Result[O, E]) void
     where
-        EitherIsDrop::[O, E],
+        IsAnyDrop2::[O, E],
     {
         if (self.is_ok()) {
             compif (O::free) {

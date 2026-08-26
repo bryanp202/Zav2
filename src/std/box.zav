@@ -1,0 +1,87 @@
+use super::ops::IsEquatable;
+use super::ops::eql;
+use super::ops::IsComparable;
+use super::ops::cmp;
+use super::ops::Ordering;
+use super::ops::IsCloneable;
+use super::ops::make_clone;
+use super::fmt::IsFormattable;
+use super::fmt::Formatter;
+
+pub struct Box[T] {
+    item: *T;
+
+    pub fn new(item: T) Box[T] {      
+        var self: Box[T] = undefined;
+        self.item = @malloc(@sizeof(item)) as *T;
+        self.item.* = item;
+        return self;
+    }
+
+    pub fn free(self: *const Box[T]) void {
+        compif (T::free) {
+            self.item.free();
+        }
+        @free(self.item);
+    }
+
+    pub fn clone(self: *const Box[T]) Box[T]
+    where
+        IsCloneable::[T],
+    {
+        return Box::[T]::new(make_clone::[T](self.item));
+    }
+
+    pub fn fmt(self: *const Box[T], fmt: *Formatter) void
+    where
+        IsFormattable::[T],
+    {
+        Formatter::format::[T](fmt, self.item);
+    }
+
+    overload* (self: Box[T]) *T {
+        return self.item;
+    }
+
+    overload== (self: Box[T], other: Box[T]) bool
+    where
+        IsEquatable::[T, T],
+    {
+        return eql::[T, T](self.item, other.item);
+    }
+
+    overload!= (self: Box[T], other: Box[T]) bool
+    where
+        IsEquatable::[T, T],
+    {
+        return !eql::[T, T](self.item, other.item);
+    }
+
+    overload< (self: Box[T], other: Box[T]) bool
+    where
+        IsComparable::[T, T],
+    {
+        return cmp::[T, T](self.item, other.item) == Ordering::Less;
+    }
+
+    overload<= (self: Box[T], other: Box[T]) bool
+    where
+        IsComparable::[T, T],
+    {
+        return cmp::[T, T](self.item, other.item) <= Ordering::Equal;
+    }
+
+    overload> (self: Box[T], other: Box[T]) bool
+    where
+        IsComparable::[T, T],
+    {
+        return cmp::[T, T](self.item, other.item) == Ordering::Greater;
+    }
+
+    overload>= (self: Box[T], other: Box[T]) bool
+    where
+        IsComparable::[T, T],
+    {
+        return cmp::[T, T](self.item, other.item) >= Ordering::Equal;
+    }
+}

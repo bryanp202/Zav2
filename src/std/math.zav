@@ -96,18 +96,18 @@ pub struct Complex[T] {
 //     }
 
 //     overload< (self: Unsigned128, other: Unsigned128) bool {
-//         return self.high <= other.high and self.low < other.low;
+//         return self.high < other.high or self.high == other.high and self.low < other.low;
 //     }
 
 //     overload<= (self: Unsigned128, other: Unsigned128) bool {
-//         return self.high <= other.high and self.low <= other.low;
+//         return self.high < other.high or self.high == other.high and self.low <= other.low;
 //     }
 
 //     overload> (self: Unsigned128, other: Unsigned128) bool {
-//         return self.high >= other.high and self.low > other.low;
+//         return self.high > other.high or self.high == other.high and self.low > other.low;
 //     }
 
 //     overload>= (self: Unsigned128, other: Unsigned128) bool {
-//         return self.high >= other.high and self.low >= other.low;
+//         return self.high > other.high or self.high == other.high and self.low >= other.low;
 //     }
 // }

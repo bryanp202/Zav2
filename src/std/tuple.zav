@@ -1,6 +1,6 @@
-use super::ops::IsDrop2;
-use super::ops::IsDrop3;
-use super::ops::IsDrop4;
+use super::ops::IsAnyDrop2;
+use super::ops::IsAnyDrop3;
+use super::ops::IsAnyDrop4;
 
 pub struct Tuple2[A, B] {
     _0: A;

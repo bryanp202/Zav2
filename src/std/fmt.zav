@@ -112,7 +112,9 @@ pub struct Formatter {
     where
         IsFormattable::[T]
     {
-        compif (item.*.*: u8) {
+        compif (T::fmt) {
+            item.fmt(self);
+        } else compif (item.*.*: u8) {
             self.unsafe_cstr_ptr(item.*);
         } else compif (item.*.*) {
             self.uint(item.* as u64);
@@ -141,7 +143,7 @@ pub struct Formatter {
         } else compif (item.*: void) {
             self.unsafe_cstr_ptr("void");
         } else {
-            item.fmt(self);
+            return "invalid type";
         }
     }
 
