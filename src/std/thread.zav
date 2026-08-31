@@ -20,7 +20,7 @@ pub struct Thread[I, O] {
     _handle: i64;
     out: Arc[Option[O]];
 
-    pub fn new(in: I, worker: fn(I)O) Result[Thread[I, O], I] {
+    pub fn spawn(in: I, worker: fn(I)O) Result[Thread[I, O], I] {
         const thread_args = @malloc(@sizeof(ThreadArgs::[I, O]::new(worker, in))) as *ThreadArgs[I, O];
         thread_args.* = ThreadArgs::[I, O]::new(worker, in);
 
@@ -46,7 +46,8 @@ pub struct Thread[I, O] {
         self.out.free();
     }
 
-    /// If join is not called or the value returned from join is not freed,
+    /// Waits for the thread to return a value.
+    /// Destroys any resources acquired by `Thread::spawn`.
     pub fn join(self: *const Thread[I, O]) Result[O, Error] {
         if (@waitOne(self._handle) != 0) {
             return Result::[O, Error]::Err(Error::FailedToJoinThread);
