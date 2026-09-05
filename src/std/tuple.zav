@@ -15,7 +15,7 @@ pub struct Tuple2[A, B] {
 
     pub fn free(self: *const Tuple2[A, B]) void
     where
-        IsDrop2::[A, B],
+        IsAnyDrop2::[A, B],
     {
         compif (A::free) {
             self._0.free();
@@ -41,7 +41,7 @@ pub struct Tuple3[A, B, C] {
 
     pub fn free(self: *const Tuple3[A, B, C]) void
     where
-        IsDrop3::[A, B, C],
+        IsAnyDrop3::[A, B, C],
     {
         compif (A::free) {
             self._0.free();
@@ -72,7 +72,7 @@ pub struct Tuple4[A, B, C, D] {
 
     pub fn free(self: *const Tuple4[A, B, C, D]) void
     where
-        IsDrop4::[A, B, C, D],
+        IsAnyDrop4::[A, B, C, D],
     {
         compif (A::free) {
             self._0.free();

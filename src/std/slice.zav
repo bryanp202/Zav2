@@ -68,7 +68,7 @@ pub struct Slice[T] {
         }
 
         for (0..self.len, self.ptr) |i, item| {
-            if (eql::[T, T](item, &other.ptr[i])) {
+            if (!eql::[T, T](item, &other.ptr[i])) {
                 return false;
             }
         }
