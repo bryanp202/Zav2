@@ -37,24 +37,29 @@ pub struct Thread[I, O] {
         return Result::[Thread[I, O], I]::Ok(self);
     }
 
+    /// Detach the thread if not joined, and free any resources
     pub fn free(self: *const Thread[I, O]) void {
-        self.detach();
-    }
-
-    pub fn detach(self: *const Thread[I, O]) void {
         @closeHandle(self._handle);
         self.out.free();
     }
 
     /// Waits for the thread to return a value.
-    /// Destroys any resources acquired by `Thread::spawn`.
+    /// Does not clean up any resources.
     pub fn join(self: *const Thread[I, O]) Result[O, Error] {
         if (@waitOne(self._handle) != 0) {
             return Result::[O, Error]::Err(Error::FailedToJoinThread);
         }
-        const out = self.out.get().take().unwrap();
-        self.detach();
-        return Result::[O, Error]::Ok(out);
+        return Result::[O, Error]::Ok(self.out.get().take().unwrap());
+    }
+
+    /// Waits for the thread to return a value.
+    /// Cleans up resources, so not safe to call in automatic containers
+    pub fn join_and_free(self: *const Thread[I, O]) Result[O, Error] {
+        if (@waitOne(self._handle) != 0) {
+            return Result::[O, Error]::Err(Error::FailedToJoinThread);
+        }
+        self.free();
+        return Result::[O, Error]::Ok(self.out.get().take().unwrap());
     }
 
     pub fn eql(self: *const Thread[I, O], other: *const Thread[I, O]) bool {
