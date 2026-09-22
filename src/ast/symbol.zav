@@ -2,7 +2,7 @@ use ::std::collections::hash::HashMap;
 use ::std::collections::list::List;
 use ::std::hash::SipHasher;
 use ::std::slice::Slice;
-use ::std::math::min;
+use ::std::math::max;
 use ::std::mem;
 use ::std::sync::RwLock;
 use ::std::sync::Arc;
@@ -100,6 +100,10 @@ pub struct Arena {
         }
     }
 
+    pub fn alloc(self: *Arena, bytes: u64, align: u64) *void {
+        return self.alloc_no_align(bytes + (self.head.len + align - 1 as u64) % align);
+    }
+
     pub fn alloc_no_align(self: *Arena, bytes: u64) *void {
         if (self.head.len + bytes >= self.head.capacity) {
             self.resize(bytes);
@@ -116,7 +120,7 @@ pub struct Arena {
 
     pub fn resize(self: *Arena, append_len: u64) void {
         self.count += 1 as u64;
-        const capacity = min::[u64](2_097_152 as u64, self.head.capacity * 2 as u64);
+        const capacity = max::[u64](append_len as u64, self.head.capacity * 2 as u64);
         const old_head = @malloc(@sizeof(self.head)) as *Block;
         old_head.* = self.head;
         self.head = Block::with_capacity(old_head, capacity);

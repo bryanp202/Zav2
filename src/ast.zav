@@ -3,102 +3,232 @@ pub mod lexer;
 pub mod parser;
 pub mod symbol;
 
+use ::std::range::Range;
+use ::std::path::PathBuf;
 use ::std::collections::list::List;
+
 use symbol::Symbol;
+use lexer::Token;
 
 pub struct UnresolvedModule {
-    // items: List[Item];
-    // stmts: List[Stmt];
-    // exprs: List[Expr];
-    // patterns: List[Pattern];
-    // path_segments: List[PathSegment];
-    // generic_args: List[GenericArg];
+    path: PathBuf;
+    canonical_name: Symbol;
+    submods: List[SubModule];
+    // Storage
+    nodes: List[AstNode];
+    extra: List[AstNodeIndex];
+    tokens: List[Token];
+
+    pub fn new(path: PathBuf, canonical_name: Symbol) UnresolvedModule {
+        var self: UnresolvedModule = undefined;
+        self.path = path;
+        self.canonical_name = canonical_name;
+        self.submods = List::[SubModule]::new();
+        self.nodes = List::[AstNode]::new();
+        self.extra = List::[AstNodeIndex]::new();
+        self.tokens = List::[Token]::new();
+        return self;
+    }
 
     pub fn free(self: *const UnresolvedModule) void {
-        
+        self.path.free();
+        self.submods.free();
+        // storage
+        self.nodes.free();
+        self.extra.free();
+        self.tokens.free();
     }
 }
 
-// pub enum ItemType {
-//     Fn,
-//     Enum,
-//     Struct,
-//     Union,
-//     Mod,
-//     Use,
-//     Global,
-// }
+pub struct SubModule {
+  path: PathBuf;
+  canonical_name: Symbol;
+}
 
-// pub enum StmtType {
-//     Mod,
-//     Use,
-//     Global,
-//     Mutate,
-//     Declare,
-//     Expression,
-//     While,
-//     Block,
-//     If,
-//     Compif,
-//     Break,
-//     Continue,
-//     Function,
-//     Return,
-//     Struct,
-//     Union,
-//     Enum,
-//     Switch,
-//     Defer,
-//     For,
-//     Generic,
-// }
+pub struct Span {
+    start: u32;
+    len: u32;
 
-// pub enum ExprType {
-//     Path, // Scope and Identifier mixed
-//     Literal,
-//     Native,
-//     Conversion,
-//     Dereference,
-//     Field,
-//     Call,
-//     Index,
-//     Unary,
-//     Arith,
-//     Compare,
-//     And,
-//     Or,
-//     If,
-//     Lambda,
-//     Generic,
-//     Shift,
-//     BitOr,
-//     BitAnd,
-//     BitXor,
-// }
+    pub fn new(start: u32, len: u32) Span {
+        var self: Span = undefined;
+        self.start = start;
+        self.len = len;
+        return self;
+    }
 
-// pub enum PatternType {
-//     Ident,
-//     Destruct,
-//     Rest,
-// }
+    pub fn eql(self: *const Span, other: *const Span) bool {
+        return self.start == other.start and self.len == other.len;
+    }
+}
 
-// pub struct Item {
-//     type: ItemType;
-// }
+/// 4294967295 is null in optional cases
+pub struct AstNodeIndex {
+    _private_id: u32;
 
-// pub struct Stmt {
-//     type: StmtType;
-// }
+    overload== (self: AstNodeIndex, other: AstNodeIndex) bool {
+        return self._private_id == other._private_id;
+    }
+}
 
-// pub struct Expr {
-//     type: ExprType;
-// }
+/// 4294967295 is null in optional cases
+pub struct AstTokenIndex {
+    _private_id: u32;
 
-// pub struct Pattern {
-//     type: PatternType;
-// }
+    overload== (self: AstTokenIndex, other: AstTokenIndex) bool {
+        return self._private_id == other._private_id;
+    }
+}
 
-// pub struct PathSegment {
-//     ident: Symbol;
-//     generic_args: Span[u32];
-// }
+pub struct AstNode {
+    span: Span;
+    token: AstTokenIndex;
+    type: AstNodeType;
+    data: AstNodeData;
+}
+
+pub enum AstNodeType {
+    /* item */
+    ItemVarDecl,
+    ItemConstDecl,
+    ItemModule,
+    ItemUse,
+    ItemFn,
+    ItemStruct,
+    ItemUnion,
+    ItemEnum,
+    ItemGeneric,
+
+    /* stmt: maybe all expr at somepoint */
+    // special stmt
+    StmtDefer,
+    StmtDeferErr,
+    StmtVarDecl,
+    StmtConstDecl,
+    // mutate stmt
+    StmtMutateEq,
+    StmtMutateCompareE,
+    StmtMutateCompareNE,
+    StmtMutateCompareL,
+    StmtMutateCompareLE,
+    StmtMutateCompareG,
+    StmtMutateCompareGE,
+    StmtMutateBitOr,
+    StmtMutateBitXor,
+    StmtMutateBitAnd,
+    StmtMutateShiftR,
+    StmtMutateShiftL,
+    StmtMutateFactorMul,
+    StmtMutateFactorDiv,
+    StmtMutateFactorMod,
+    // other stmt
+    StmtExpr,
+    StmtReturn,
+    StmtReturnErr,
+    StmtIf,
+    StmtWhile,
+    StmtFor,
+    StmtBlock,
+    StmtBreak,
+    StmtContinue,
+    StmtSwitch,
+
+    /* expr */
+    // ternary expr
+    TernaryIf,
+    // logical expr
+    LogicalOr,
+    LogicalAnd,
+    // compare expr
+    CompareE,
+    CompareNE,
+    CompareL,
+    CompareLE,
+    CompareG,
+    CompareGE,
+    // bit manipulation expr
+    BitOr,
+    BitXor,
+    BitAnd,
+    // shift expr
+    ShiftR,
+    ShiftL,
+    // term expr
+    TermAdd,
+    TermSub,
+    // factor expr
+    FactorMul,
+    FactorDiv,
+    FactorRem,
+    // conv expr
+    Conversion,
+    // unary expr
+    UnaryInvert,
+    UnaryMinus,
+    UnaryBang,
+    UnaryAmp,
+    // trailing expr
+    TrailingCall,
+    TrailingIndex,
+    TrailingField,
+    TrailingDeref,
+    // literal
+    LiteralNullptr,
+    LiteralBool,
+    LiteralInt,
+    LiteralFloat,
+    LiteralChar,
+    LiteralStr,
+    LiteralArr,
+    LiteralNative,
+    LiteralLambda,
+
+    /* types */
+    TypeVoid,
+    TypeBool,
+    TypeUint,
+    TypeInt,
+    TypeFloat32,
+    TypeFloat64,
+    TypePtr,
+    TypeArr,
+
+    /* patterns */
+    PatternDestruct,
+    PatternRange,
+    PatternRef,
+    PatternOr,
+    PatternRest,
+
+    /* shared */
+    Path,
+    Poison,
+}
+
+pub union AstNodeData {
+    node: AstNodeIndex;
+    token_and_node: TokenAndNode;
+    node_and_node: NodeAndNode;
+    node_and_extra: NodeAndExtra;
+    extra_and_node: ExtraAndNode;
+    extra: Range[AstNodeIndex];
+}
+
+pub struct TokenAndNode {
+    token: AstTokenIndex;
+    node: AstNodeIndex;
+}
+
+pub struct NodeAndNode {
+    node1: AstNodeIndex;
+    node2: AstNodeIndex;
+}
+
+pub struct NodeAndExtra {
+    node: AstNodeIndex;
+    extra: Range[AstNodeIndex];
+}
+
+pub struct ExtraAndNode {
+    extra: Range[AstNodeIndex];
+    node: AstNodeIndex;
+}

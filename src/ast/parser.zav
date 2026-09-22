@@ -4,8 +4,16 @@ use ::std::path::PathBuf;
 use ::std::io::IoError;
 use ::std::io::fs;
 use ::std::result::Result;
+use ::std::range::Range;
 
 use super::UnresolvedModule;
+use super::Span;
+use super::AstNode;
+use super::AstNodeIndex;
+use super::AstTokenIndex;
+use super::AstNodeType;
+use super::symbol::Symbol;
+use super::symbol::SymbolInterner;
 use super::lexer::Lexer;
 use super::lexer::Token;
 use super::lexer::TokenType;
@@ -28,23 +36,33 @@ pub struct ParseResult {
 }
 
 pub struct Parser {
-    errors: List[Error];
     lexer: Lexer;
+    interner: SymbolInterner;
+    // cache
     curr: Token;
     prev: Token;
     src: Slice[u8];
+    // result
+    module: UnresolvedModule;
+    errors: List[Error];
+    
 
-    fn new(src: Slice[u8]) Parser {
+    fn new(src: Slice[u8], interner: SymbolInterner) Parser {
         var self: Parser = undefined;
+        self.lexer = Lexer::new(src);
+        self.interner = interner;
         self.errors = List::[Error]::new();
         self.curr.type = TokenType::Eof;
         self.prev.type = TokenType::Eof;
-        self.lexer = Lexer::new(src);
         self.src = src;
         return self;
     }
 
-    pub fn parse(path: PathBuf) Result[ParseResult, IoError] {
+    fn free(self: *const Parser) void {
+        self.interner.free();
+    }
+
+    pub fn parse(path: PathBuf, interner: SymbolInterner) Result[ParseResult, IoError] {
         const file_contents = fs::read_file(path.as_cstr());
         if (file_contents.is_err()) {
             path.free();
@@ -53,28 +71,97 @@ pub struct Parser {
         const src = file_contents.unwrap_ok();
         defer src.free();
 
-        var parser = Parser::new(src.as_slice());
+        var parser = Parser::new(src.as_slice(), interner);
+        defer parser.free();
         return Result::[ParseResult, IoError]::Ok(parser.parse_ast(path));
     }
 
     fn parse_ast(self: *Parser, path: PathBuf) ParseResult {
+        var result: ParseResult = undefined;
+        self.module = UnresolvedModule::new(path.clone(), self.interner.intern(Slice::[u8]::new(".", @len(".".*))));
+
         self.advance();
         while (!self.at_end()) {
             self.advance();
         }
 
-        var result: ParseResult = undefined;
+        result.module = self.module;
         result.error_cache = ErrorCache::from_error_list(path, self.src, self.errors);
         return result;
     }
 
     ///////////////////////
+    // Glbl Item Parsing //
+    ///////////////////////
+    /// Expects item functions to return true on error
+    fn parse_item(self: *Parser) void {
+        const is_public = self.match(TokenType::Pub);
+
+        var ret: bool = undefined;
+        switch (self.curr.type) {
+            TokenType::Fn => ret = self.parse_fn(is_public);
+            else => {
+                self.error(ErrorType::UnexpectedSymbol);
+                ret = false;
+            }
+        }
+        
+        if (ret) {
+            self.global_synchronize();
+        }
+    }
+
+    fn parse_fn(self: *Parser, is_public: bool) bool {
+        const span_start = self.prev.lexeme.ptr;
+
+        if (!self.eat(TokenType::Identifier, ErrorType::UnexpectedSymbol)) ereturn true;
+        const name = self.store_prev_token();
+
+        self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen);
+        const params = self.parse_fn_params();
+        self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen);
+
+        const ret_type = self.parse_type();
+        if (!self.eat(TokenType::LeftBrace, ErrorType::ExpectedLeftBrace)) ereturn true;
+        const body = self.parse_stmt_block();
+
+        const span_end = self.prev.lexeme.ptr + self.prev.lexeme.len;
+
+        var node: AstNode = undefined;
+        node.span = self.emit_span(span_start);
+        node.token = name;
+        node.type = AstNodeType::ItemFn;
+        node.data.extra_and_node.extra = params;
+        node.data.extra_and_node.node = body;
+
+        return false;
+    }
+
+    fn parse_fn_params(self: *Parser) Range[AstNodeIndex] {
+
+    }
+
+    ///////////////////////
     // Statement Parsing //
     ///////////////////////
+    fn parse_stmt_block(self: *Parser) AstNodeIndex {
+
+    }
 
     ////////////////////////
     // Expression Parsing //
     ////////////////////////
+
+    ////////////////////////
+    //   Pattern Parsing  //
+    ////////////////////////
+
+    ////////////////////////
+    //    Type Parsing    //
+    ////////////////////////
+    fn parse_type(self: *Parser) void {
+
+    }
 
     /////////////////////
     // Private Helpers //
@@ -122,5 +209,42 @@ pub struct Parser {
         }
         self.error(err);
         return false;
+    }
+
+    fn global_synchronize(self: *Parser) void {
+        while (true) {
+            switch (self.prev.type) {
+                TokenType::Semicolon
+                | TokenType::LeftBrace => return;
+            }
+
+            switch (self.curr.type) {
+                TokenType::Var
+                | TokenType::Const
+                | TokenType::Pub
+                | TokenType::Use
+                | TokenType::Fn
+                | TokenType::Mod
+                | TokenType::Union
+                | TokenType::Enum => return;
+            }
+            self.advance();
+        }
+    }
+
+    /////////////
+    // Storage //
+    /////////////
+    fn store_prev_token(self: *Parser) AstTokenIndex {
+        var token_index: AstTokenIndex = undefined;
+        token_index._private_id = self.module.tokens.len as u32;
+        self.module.tokens.push(self.prev);
+        return token_index;
+    }
+
+    fn emit_span(self: *const Parser, start_ptr: *const u8) Span {
+        const start = (start_ptr - self.src.ptr) as u32; 
+        const len = (self.prev.lexeme.ptr + self.prev.lexeme.len - start_ptr) as u32;
+        return Span::new(start, len);
     }
 }

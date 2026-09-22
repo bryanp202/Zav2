@@ -7,48 +7,26 @@ use ::std::fmt::Formatter;
 use ::std::fmt::TextColor;
 use ::std::tuple::Tuple3;
 
-pub struct Span[T] {
-    start: T;
-    len: T;
-
-    pub fn new(start: T, len: T) Span[T] {
-        var self: Span[T] = undefined;
-        self.start = start;
-        self.len = len;
-        return self;
-    }
-
-    pub fn eql(self: *const Span[T], other: *const Span[T]) bool {
-        return self.start == other.start and self.len == other.len;
-    }
-}
+use super::Span;
 
 pub struct Error {
     type: ErrorType;
-    span: Span[u32];
+    span: Span;
 
     pub fn new(type: ErrorType, start: u32, len: u32) Error {
         var self: Error = undefined;
         self.type = type;
-        self.span = Span::[u32]::new(start, len);
+        self.span = Span::new(start, len);
         return self;
-    }
-
-    pub fn eql(self: *const Error, other: *const Error) bool {
-        return self.type == other.type;
     }
 }
 
 pub struct CachedError {
-    src: Span[u32];
-    span: Span[u32];
+    src: Span;
+    span: Span;
     line: u32;
     col: u32;
     type: ErrorType;
-
-    pub fn eql(self: *const CachedError, other: *const CachedError) bool { // TODO ZAV2 delete this
-        return self.type == other.type;
-    }
 
     pub fn fmt(self: *const CachedError, fmt: *Formatter) void {
         fmt.bold();
@@ -95,8 +73,8 @@ pub struct ErrorCache {
 
         for (0..errors.len, errors.items) |i, err| {
             const { _0: line, _1: col, _2: src_slice } = lines_cache.find(src, err.span);
-            const src_span = Span::[u32]::new(self.cache.len as u32, src_slice.len as u32);
-            const span = Span::[u32]::new(self.cache.len as u32 + col - 1 as u32, err.span.len);
+            const src_span = Span::new(self.cache.len as u32, src_slice.len as u32);
+            const span = Span::new(self.cache.len as u32 + col - 1 as u32, err.span.len);
             self.cache.append(src_slice);
 
             var cached_error: CachedError = undefined;
@@ -183,8 +161,8 @@ pub struct ErrorCache {
             error_lines.*[line_count - 1] = ErrorLine::new(
                 curr_line,
                 line_count == 1
-                    ? Span::[u32]::new(err.col, curr_line.len as u32)
-                    : Span::[u32]::new(0 as u32, curr_line.len as u32),
+                    ? Span::new(err.col, curr_line.len as u32)
+                    : Span::new(0 as u32, curr_line.len as u32),
                 curr_line_num,
             );
 
@@ -200,10 +178,10 @@ pub struct ErrorCache {
 
 struct ErrorLine {
     src: Slice[u8];
-    span: Span[u32];
+    span: Span;
     line: u32;
 
-    pub fn new(src: Slice[u8], span: Span[u32], line: u32) ErrorLine {
+    pub fn new(src: Slice[u8], span: Span, line: u32) ErrorLine {
         var self: ErrorLine = undefined;
         self.src = src;
         self.span = span;
@@ -346,35 +324,6 @@ struct ErrorLine {
     }
 }
 
-pub enum ErrorType {
-    ExpectedLeftParen,
-    ExpectedRightParen,
-    InvalidCharLiteral,
-    InvalidDigitSeperator,
-    InvalidNative,
-    InvalidScientificNotation,
-    UnterminatedBlockComment,
-    UnterminatedStringLiteral,
-    UnexpectedSymbol,
-}
-
-fn error_type_to_msg(type: ErrorType) *const u8 {
-    var msg: *const u8 = nullptr; 
-    switch (type) {
-        ErrorType::ExpectedLeftParen => msg = "expected '('";
-        ErrorType::ExpectedRightParen => msg = "expected ')'";
-        ErrorType::InvalidCharLiteral => msg = "invalid char literal";
-        ErrorType::InvalidDigitSeperator => msg = "expected digit seperator to be between two digits";
-        ErrorType::InvalidNative => msg = "native must start with an alpha character";
-        ErrorType::InvalidScientificNotation => msg = "invalid floating point scientific notation";
-        ErrorType::UnterminatedBlockComment => msg = "unterminated block comment";
-        ErrorType::UnterminatedStringLiteral => msg = "unterminated string literal";
-        ErrorType::UnexpectedSymbol => msg = "unexpected symbol";
-        else => msg = "unknown error";
-    }
-    return msg;
-}
-
 /// Used to store src line offsets and calculate
 /// line, column, and source slice
 struct LineNumCache {
@@ -398,7 +347,7 @@ struct LineNumCache {
     }
 
     /// Returns (line, col, src_slice)
-    pub fn find(self: *const LineNumCache, src: Slice[u8], span: Span[u32]) Tuple3[u32, u32, Slice[u8]] {
+    pub fn find(self: *const LineNumCache, src: Slice[u8], span: Span) Tuple3[u32, u32, Slice[u8]] {
         const line = self.binary_search(span.start);
         const end_line = self.binary_search(span.start + span.len);
         const start = self.cache.items[line - 1];
@@ -433,4 +382,35 @@ struct LineNumCache {
             }
         }
     }
+}
+
+pub enum ErrorType {
+    ExpectedLeftBrace,
+    ExpectedRightBrace,
+    ExpectedLeftParen,
+    ExpectedRightParen,
+    InvalidCharLiteral,
+    InvalidDigitSeperator,
+    InvalidNative,
+    InvalidScientificNotation,
+    UnterminatedBlockComment,
+    UnterminatedStringLiteral,
+    UnexpectedSymbol,
+}
+
+fn error_type_to_msg(type: ErrorType) *const u8 {
+    var msg: *const u8 = nullptr; 
+    switch (type) {
+        ErrorType::ExpectedLeftParen => msg = "expected '('";
+        ErrorType::ExpectedRightParen => msg = "expected ')'";
+        ErrorType::InvalidCharLiteral => msg = "invalid char literal";
+        ErrorType::InvalidDigitSeperator => msg = "expected digit seperator to be between two digits";
+        ErrorType::InvalidNative => msg = "native must start with an alpha character";
+        ErrorType::InvalidScientificNotation => msg = "invalid floating point scientific notation";
+        ErrorType::UnterminatedBlockComment => msg = "unterminated block comment";
+        ErrorType::UnterminatedStringLiteral => msg = "unterminated string literal";
+        ErrorType::UnexpectedSymbol => msg = "unexpected symbol";
+        else => msg = "unknown error";
+    }
+    return msg;
 }

@@ -115,8 +115,10 @@ pub struct Lexer {
                 'o' => return self.try_keyword(TokenType::Do, @len("o".*), "o");
             }
             'e' => switch (self.peek()) {
+                'd' => return self.try_keyword(TokenType::Edefer, @len("defer".*), "defer");
                 'l' => return self.try_keyword(TokenType::Else, @len("lse".*), "lse");
                 'n' => return self.try_keyword(TokenType::Enum, @len("num".*), "num");
+                'r' => return self.try_keyword(TokenType::Ereturn, @len("return".*), "return");
             }
             'f' => switch (self.peek()) {
                 '3' => return self.try_keyword(TokenType::F32Type, @len("32".*), "32");
@@ -478,8 +480,10 @@ pub enum TokenType {
     Continue,
     Defer,
     Do,
+    Edefer,
     Else,
     Enum,
+    Ereturn,
     False,
     Fn,
     For,
