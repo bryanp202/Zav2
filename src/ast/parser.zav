@@ -125,8 +125,6 @@ pub struct Parser {
         if (!self.eat(TokenType::LeftBrace, ErrorType::ExpectedLeftBrace)) ereturn true;
         const body = self.parse_stmt_block();
 
-        const span_end = self.prev.lexeme.ptr + self.prev.lexeme.len;
-
         var node: AstNode = undefined;
         node.span = self.emit_span(span_start);
         node.token = name;
