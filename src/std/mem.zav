@@ -6,6 +6,15 @@ pub fn [T] cpy(len: u64, dst: *T, src: *const T) void {
     }
 }
 
+pub fn [T] rev_cpy(len: u64, dst: *T, src: *const T) void {
+    var i = len;
+    while (i > 0) {
+        i -= 1 as u8;
+        dst[i] = src[i];
+    }
+}
+
+
 pub fn [T] zero(src: *T, len: u64) void {
     for (0..len * @sizeof(src.*), src as *u8) |_, byte| {
         byte.* = 0 as u8;

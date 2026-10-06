@@ -144,17 +144,12 @@ pub struct List[T] {
     }
 
     /// Invalid to call on out of bounds index
-    pub fn insert(self: *List[T], index: u64, item: T) void {
+    pub fn insert(self: *List[T], item: T, index: u64) void {
         if (self.len == self.capacity) {
-            self.resize_with_gap(1 as u64, index);
-            self.items[index] = item;
-        } else {
-            var i = self.len as i64;
-            while (i > index) {
-                self.items[i] = self.items[i - 1];
-            } loop i -= 1;
-            self.items[index] = item;
+            self.resize(1 as u64);
         }
+        mem::rev_cpy::[T](self.len - index, &self.items[index + 1], &self.items[index]);
+        self.items[index] = item;
         self.len += 1 as u64;
     }
 
@@ -179,25 +174,9 @@ pub struct List[T] {
     /* Private Helpers */
 
     fn resize(self: *List[T], append_len: u64) void {
-        const old_capacity = self.capacity;
-        const old_items = self.items;
         self.capacity = self.capacity != 0 as u64
             ? max::[u64](self.capacity * 2 as u64, self.capacity + append_len)
             : max::[u64](append_len, 8 as u64);
-        self.items = @malloc(@sizeof(self.items.*) * self.capacity) as *T;
-        mem::cpy::[T](self.len, self.items, old_items);
-        @free(old_items);
-    }
-
-    fn resize_with_gap(self: *List[T], insert_len: u64, gap_index: u64) void {
-        const old_capacity = self.capacity;
-        const old_items = self.items;
-        self.capacity = self.capacity != 0 as u64
-            ? max::[u64](self.capacity * 2 as u64, self.capacity + insert_len)
-            : max::[u64](insert_len, 8 as u64);
-        self.items = @malloc(@sizeof(self.items.*) * self.capacity) as *T;
-        mem::cpy::[T](gap_index, self.items, old_items);
-        mem::cpy::[T](self.len - gap_index, &self.items[gap_index + 1], &old_items[gap_index]);
-        @free(old_items);
+        self.items = @realloc(self.items, @sizeof(self.items.*) * self.capacity) as *T;
     }
 }
