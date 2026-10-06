@@ -213,7 +213,7 @@ struct ErrorLine {
         }
 
         fmt.set_fg_color(TextColor::Red);
-        for (0..self.span.len) |_| {
+        for (0.. ::std::math::max::[u32](self.span.len, 1 as u32)) |_| {
             fmt.unsafe_cstr_ptr("^");
         }
         fmt.reset_attributes();
