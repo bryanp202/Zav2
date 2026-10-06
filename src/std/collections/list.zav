@@ -6,8 +6,9 @@ use super::super::mem;
 
 use super::super::fmt::IsFormattable;
 use super::super::ops::IsCloneable;
-use super::super::ops::make_clone;
 use super::super::ops::IsEquatable;
+use super::super::ops::HasDefault;
+use super::super::ops;
 
 pub struct List[T] {
     items: *T;
@@ -49,7 +50,7 @@ pub struct List[T] {
         clone.capacity = self.capacity;
         
         for (0..self.len, self.items) |i, item| {
-            clone.items[i] = make_clone::[T](item);
+            clone.items[i] = ops::make_clone::[T](item);
         }
 
         return clone;
@@ -95,6 +96,22 @@ pub struct List[T] {
         return Slice::[T]::new(self.items, self.len);
     }
 
+    pub fn reserve(self: *List[T], count: u64) void
+    where
+        HasDefault::[T],
+    {
+        if (count == 0) {
+            return;
+        }
+        if (self.len + count >= self.capacity) {
+            self.resize(count);
+            for (0..count, &self.items[self.len]) |_, item| {
+                item.* = ops::make_default::[T]();
+            }
+        }
+        self.len += count;
+    }
+
     pub fn push(self: *List[T], item: T) void {
         if (self.len == self.capacity) {
             self.resize(1 as u64);
@@ -119,6 +136,11 @@ pub struct List[T] {
         }
         self.len -= 1 as u64;
         return Option::[T]::Some(self.items[self.len]);
+    }
+
+    // Pops n items from the list, with no way to free resources.
+    pub fn unsafe_npop(self: *List[T], n: u64) void {
+        self.len -= n;
     }
 
     /// Invalid to call on out of bounds index
