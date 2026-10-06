@@ -49,6 +49,11 @@ pub struct IntType {
         self.span = span;
         return self;
     }
+
+    pub fn fmt(self: *const IntType, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("i");
+        fmt.uint(self.bits);
+    }
 }
 
 pub struct UintType {
@@ -63,6 +68,11 @@ pub struct UintType {
         self.span = span;
         return self;
     }
+
+    pub fn fmt(self: *const UintType, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("u");
+        fmt.uint(self.bits);
+    }
 }
 
 pub struct FloatType {
@@ -76,6 +86,11 @@ pub struct FloatType {
         self.bits = bits;
         self.span = span;
         return self;
+    }
+
+    pub fn fmt(self: *const FloatType, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("f");
+        fmt.uint(self.bits);
     }
 }
 
@@ -94,6 +109,15 @@ pub struct PtrType {
         self.span = span;
         return self;
     }
+
+    pub fn fmt(self: *const PtrType, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        if (self.mutable) {
+            fmt.unsafe_cstr_ptr("*");
+        } else {
+            fmt.unsafe_cstr_ptr("*const ");
+        }
+        ast.display_next_node(fmt, index, @sizeof(self.*));
+    }
 }
 
 pub struct ArrayType {
@@ -111,6 +135,13 @@ pub struct ArrayType {
         self.child = child;
         return self;
     }
+
+    pub fn fmt(self: *const ArrayType, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        fmt.unsafe_cstr_ptr("[");
+        ast.display_next_node(fmt, index, @sizeof(self.*));
+        fmt.unsafe_cstr_ptr("]");
+        ast.display_node(fmt, self.child._private_index);
+    }
 }
 
 pub struct FnType {
@@ -118,19 +149,34 @@ pub struct FnType {
     param_count: u16;
     span: SpanIndex;
     params: AstExtraIndex;
-    // ret_type: AstNodeIndex (always + 1);
+    ret_type: AstNodeIndex;
 
-    pub fn new(span: SpanIndex, param_count: u16, params: AstExtraIndex) FnType {
+    pub fn new(
+        span: SpanIndex,
+        param_count: u16,
+        params: AstExtraIndex,
+        ret_type: AstNodeIndex,
+    ) FnType {
         var self: FnType = undefined;
         self.type = AstNodeType::FnType;
         self.param_count = param_count;
         self.span = span;
         self.params = params;
+        self.ret_type = ret_type;
         return self;
     }
 
-    pub fn format(self: *const FnType, ast: *const Ast, fmt: *Formatter) void {
-
+    pub fn fmt(self: *const FnType, fmt: *Formatter, ast: *const Ast) void {
+        fmt.unsafe_cstr_ptr("fn(");
+        if (self.param_count >= 1) {
+            ast.display_node(fmt, ast.extra.items[self.params._private_index]);
+            for (1..self.param_count, &ast.extra.items[self.params._private_index + 1]) |_, param| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, param.*);
+            }
+        }
+        fmt.unsafe_cstr_ptr(")");
+        ast.display_node(fmt, self.ret_type._private_index);
     }
 }
 
@@ -147,5 +193,17 @@ pub struct TupleType {
         self.span = span;
         self.field_index = field_index;
         return self;
+    }
+
+    pub fn fmt(self: *const TupleType, fmt: *Formatter, ast: *const Ast) void {
+        fmt.unsafe_cstr_ptr("(");
+        if (self.field_count >= 1) {
+            ast.display_node(fmt, ast.extra.items[self.field_index._private_index]);
+            for (1..self.field_count, &ast.extra.items[self.field_index._private_index + 1]) |_, param| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, param.*);
+            }
+        }
+        fmt.unsafe_cstr_ptr(")");
     }
 }

@@ -14,8 +14,6 @@ use ::std::fmt::Formatter;
 use ::std::collections::list::List;
 
 use symbol::Symbol;
-use ty::IntType;
-use ty::UintType;
 
 pub struct UnresolvedModule {
     path: PathBuf;
@@ -60,26 +58,26 @@ pub struct Ast {
             fmt.unsafe_cstr_ptr("[empty]");
             return;
         }
-
-        var index: AstNodeIndex = undefined;
-        index._private_index = 0 as u32;
-        self.display_node(fmt, index);
+        self.display_node(fmt, 0 as u8);
     }
 
-    fn display_node(self: *const Ast, fmt: *Formatter, index: AstNodeIndex) void {
-        const node = &self.nodes.items[index._private_index];
+    pub fn display_next_node(self: *const Ast, fmt: *Formatter, index: u64, size: u64) void {
+        self.display_node(fmt, index + size / 4 as u8);
+    } 
+
+    pub fn display_node(self: *const Ast, fmt: *Formatter, index: u64) void {
+        const node = &self.nodes.items[index];
         const type = node.* as AstNodeType;
         switch (type) {
             AstNodeType::VoidType => fmt.unsafe_cstr_ptr("void");
             AstNodeType::BoolType => fmt.unsafe_cstr_ptr("bool");
-            AstNodeType::IntType => {
-                fmt.unsafe_cstr_ptr("i");
-                fmt.uint((node as *IntType).bits);
-            }
-            AstNodeType::UintType => {
-                fmt.unsafe_cstr_ptr("u");
-                fmt.uint((node as *UintType).bits);
-            }
+            AstNodeType::IntType => (node as *ty::IntType).fmt(fmt);
+            AstNodeType::UintType => (node as *ty::UintType).fmt(fmt);
+            AstNodeType::FloatType => (node as *ty::FloatType).fmt(fmt);
+            AstNodeType::PtrType => (node as *ty::PtrType).fmt(fmt, self, index);
+            AstNodeType::ArrayType => (node as *ty::ArrayType).fmt(fmt, self, index);
+            AstNodeType::FnType => (node as *ty::FnType).fmt(fmt, self);
+            AstNodeType::TupleType => (node as *ty::TupleType).fmt(fmt, self);
             else => @abort("unsupported node type: %llu\n", type);
         }
     }
@@ -98,6 +96,14 @@ pub struct Span {
 
     pub fn eql(self: *const Span, other: *const Span) bool {
         return self.start == other.start and self.len == other.len;
+    }
+
+    pub fn fmt(self: *const Span, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("[");
+        fmt.uint(self.start);
+        fmt.unsafe_cstr_ptr("..");
+        fmt.uint(self.start + self.len);
+        fmt.unsafe_cstr_ptr("]");
     }
 }
 

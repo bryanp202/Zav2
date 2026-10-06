@@ -119,6 +119,12 @@ pub struct Parser {
 
         var fmt = ::std::fmt::Formatter::new_for_terminal();
         defer fmt.free();
+        self.ast.nodes.fmt(&fmt);
+        fmt.newline();
+        self.ast.extra.fmt(&fmt);
+        fmt.newline();
+        self.ast.spans.fmt(&fmt);
+        fmt.newline();
         self.ast.fmt(&fmt);
         fmt.newline();
         fmt.print();
@@ -238,7 +244,7 @@ pub struct Parser {
                 index = self.store_node(&node as *u32, @sizeof(node));
             }
             TokenType::Star => return self.parse_ptr_type(token);
-            TokenType::LeftSquare => return self.parse_arr_type(token);
+            TokenType::LeftSquare => return self.parse_array_type(token);
             TokenType::Fn => return self.parse_fn_type(token);
             TokenType::LeftParen => return self.parse_tuple_type(token);
             TokenType::Scope | TokenType::Identifier => return self.parse_user_type(token);
@@ -249,7 +255,7 @@ pub struct Parser {
 
     fn parse_ptr_type(self: *Parser, token: Token) Result[AstNodeIndex, void] {
         const mutable = !self.match(TokenType::Const);
-        const index = self.reserve_node(@sizeof(ast::ty::PtrType::new(0 as SpanIndex, false)));
+        const index = self.reserve_node(@sizeof(0 as ast::ty::PtrType));
         edefer self.unreserve_node(index);
 
         const child = self.parse_type();
@@ -265,18 +271,19 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    fn parse_arr_type(self: *Parser, token: Token) Result[AstNodeIndex, void] {
-        const index = self.reserve_node(@sizeof(ast::ty::ArrayType::new(0 as SpanIndex, 0 as AstNodeIndex)));
+    fn parse_array_type(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as ast::ty::ArrayType));
         edefer self.unreserve_node(index);
 
-        const len = self.parse_expr();
+        const len = self.parse_type();
         if (len.is_err()) {
             ereturn len;
         }
-        // ignore result of eat because user might have just forgotten to add ']'
-        self.eat(TokenType::RightSquare, ErrorType::ExpectedRightSquare);
+        if (!self.eat(TokenType::RightSquare, ErrorType::ExpectedRightSquare)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
 
-        const child = self.parse_type();
+        const child = self.parse_expr();
         if (child.is_err()) {
             ereturn child;
         }
@@ -289,13 +296,14 @@ pub struct Parser {
     }
 
     fn parse_fn_type(self: *Parser, token: Token) Result[AstNodeIndex, void] {
-        const index = self.reserve_node(@sizeof(ast::ty::FnType::new(0 as SpanIndex, 0 as u16, 0 as AstExtraIndex)));
+        const index = self.reserve_node(@sizeof(0 as ast::ty::FnType));
         edefer self.unreserve_node(index);
         const field_start = self.start_scratch();
         defer self.clear_scratch(field_start);
 
-        // user might have just forgotten '(' so try to continue
-        self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen);
+        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
         while (!self.check(TokenType::RightParen)) {
             const type = self.parse_type();
             if (type.is_err()) {
@@ -307,8 +315,10 @@ pub struct Parser {
                 break;
             }
         }
-        // user might have just forgotten ')' so try to continue
-        self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen);
+
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen))  {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
         if (field_count > 65535) {
             const path_slice = self.path.as_slice();
@@ -324,13 +334,14 @@ pub struct Parser {
             self.store_span_since(token),
             field_count as u16,
             field_index,
+            ret_type.unwrap_ok(),
         );
         self.set_node(index, &node as *u32);
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
     fn parse_tuple_type(self: *Parser, token: Token) Result[AstNodeIndex, void] {
-        const index = self.reserve_node(@sizeof(ast::ty::TupleType::new(0 as SpanIndex, 0 as u16, 0 as AstExtraIndex)));
+        const index = self.reserve_node(@sizeof(0 as ast::ty::TupleType));
         edefer self.unreserve_node(index);
         const field_start = self.start_scratch();
         defer self.clear_scratch(field_start);
@@ -346,8 +357,10 @@ pub struct Parser {
                 break;
             }
         }
-        // user might have just forgotten ')' so try to continue
-        self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen);
+
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
         if (field_count > 65535) {
             const path_slice = self.path.as_slice();
