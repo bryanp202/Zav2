@@ -1,0 +1,151 @@
+use ::std::fmt::Formatter;
+
+use super::Ast;
+use super::AstNodeType;
+use super::AstNodeIndex;
+use super::OptionalAstNodeIndex;
+use super::AstExtraIndex;
+use super::SpanIndex;
+use super::OptionalSpanIndex;
+use super::symbol::Symbol;
+
+pub struct VoidType {
+    type: AstNodeType;
+    pan: u16;
+    span: SpanIndex;
+
+    pub fn new(span: SpanIndex) VoidType {
+        var self: VoidType = undefined;
+        self.type = AstNodeType::VoidType;
+        self.pan = 0 as u16;
+        self.span = span;
+        return self;
+    }
+}
+
+pub struct BoolType {
+    type: AstNodeType;
+    pad: u16;
+    span: SpanIndex;
+
+    pub fn new(span: SpanIndex) BoolType {
+        var self: BoolType = undefined;
+        self.type = AstNodeType::BoolType;
+        self.pad = 0 as u16;
+        self.span = span;
+        return self;
+    }
+}
+
+pub struct IntType {
+    type: AstNodeType;
+    bits: u16;
+    span: SpanIndex;
+
+    pub fn new(span: SpanIndex, bits: u16) IntType {
+        var self: IntType = undefined;
+        self.type = AstNodeType::IntType;
+        self.bits = bits;
+        self.span = span;
+        return self;
+    }
+}
+
+pub struct UintType {
+    type: AstNodeType;
+    bits: u16;
+    span: SpanIndex;
+
+    pub fn new(span: SpanIndex, bits: u16) UintType {
+        var self: UintType = undefined;
+        self.type = AstNodeType::UintType;
+        self.bits = bits;
+        self.span = span;
+        return self;
+    }
+}
+
+pub struct FloatType {
+    type: AstNodeType;
+    bits: u16;
+    span: SpanIndex;
+
+    pub fn new(span: SpanIndex, bits: u16) FloatType {
+        var self: FloatType = undefined;
+        self.type = AstNodeType::FloatType;
+        self.bits = bits;
+        self.span = span;
+        return self;
+    }
+}
+
+pub struct PtrType {
+    type: AstNodeType;
+    mutable: bool;
+    pad: u8;
+    span: SpanIndex;
+    // child: AstNodeIndex (always +1);
+
+    pub fn new(span: SpanIndex, mutable: bool) PtrType {
+        var self: PtrType = undefined;
+        self.type = AstNodeType::PtrType;
+        self.pad = 0 as u8;
+        self.mutable = mutable;
+        self.span = span;
+        return self;
+    }
+}
+
+pub struct ArrayType {
+    type: AstNodeType;
+    pad: u16;
+    span: SpanIndex;
+    // len: AstNodeIndex; (always +1) // const expr
+    child: AstNodeIndex;
+
+    pub fn new(span: SpanIndex, child: AstNodeIndex) ArrayType {
+        var self: ArrayType = undefined;
+        self.type = AstNodeType::ArrayType;
+        self.pad = 0 as u16;
+        self.span = span;
+        self.child = child;
+        return self;
+    }
+}
+
+pub struct FnType {
+    type: AstNodeType;
+    param_count: u16;
+    span: SpanIndex;
+    params: AstExtraIndex;
+    // ret_type: AstNodeIndex (always + 1);
+
+    pub fn new(span: SpanIndex, param_count: u16, params: AstExtraIndex) FnType {
+        var self: FnType = undefined;
+        self.type = AstNodeType::FnType;
+        self.param_count = param_count;
+        self.span = span;
+        self.params = params;
+        return self;
+    }
+
+    pub fn format(self: *const FnType, ast: *const Ast, fmt: *Formatter) void {
+
+    }
+}
+
+pub struct TupleType {
+    type: AstNodeType;
+    field_count: u16;
+    span: SpanIndex;
+    field_index: AstExtraIndex; // list of types
+
+    pub fn new(span: SpanIndex, field_count: u16, field_index: AstExtraIndex) TupleType {
+        var self: TupleType = undefined;
+        self.type = AstNodeType::TupleType;
+        self.field_count = field_count;
+        self.span = span;
+        self.field_index = field_index;
+        return self;
+    }
+}
