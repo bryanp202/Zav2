@@ -1,0 +1,85 @@
+use super::AstNodeType;
+use super::AstNodeIndex;
+use super::OptionalAstNodeIndex;
+use super::AstExtraIndex;
+use super::SpanIndex;
+use super::OptionalSpanIndex;
+use super::symbol::Symbol;
+
+pub enum Visibility {
+    Private,
+    Public,
+}
+
+pub struct DeclItem {
+    type: AstNodeType;
+    visibility: Visibility;
+    pattern: AstNodeIndex;
+    ty: OptionalAstNodeIndex;
+    // expr: AstNodeIndex (always +1);
+}
+
+pub struct ModuleItem {
+    type: AstNodeType;
+    visibility: Visibility;
+    sym: Symbol;
+    span: SpanIndex;
+}
+
+pub struct FnItem {
+    type: AstNodeType;
+    visibility: Visibility;
+    name_sym: Symbol;
+    name_span: SpanIndex;
+    generic_count: u16;
+    param_count: u16;
+    generic_index: AstExtraIndex; // list of Identifier
+    param_index: AstExtraIndex; // list of Parameter
+}
+
+pub struct UnionItem {
+    type: AstNodeType;
+    visibility: Visibility;
+    name_sym: Symbol;
+    name_span: SpanIndex;
+    generic_count: u16;
+    param_count: u16;
+    generic_index: AstExtraIndex; // list of Identifier
+    param_index: AstExtraIndex; // list of Parameter
+}
+
+pub struct EnumItem {
+    type: AstNodeType;
+    visibility: Visibility;
+    name_sym: Symbol;
+    name_span: SpanIndex;
+    variant_count: u32;
+    variant_index: AstExtraIndex; // list of Identifier
+}
+
+pub struct UseItem {
+    type: AstNodeType;
+    visibility: Visibility;
+    // tree: AstNodeIndex (always +1);
+}
+
+pub struct UseTreeNode {
+    type: AstNodeType;
+    prefix_count: u16;
+    prefix_index: AstExtraIndex; // list of ScopeSegment
+    // tail: AstNodeIndex (always +1); // branch or Leaf
+}
+
+pub struct UseTreeBranch {
+    type: AstNodeType;
+    nested_count: u16;
+    nested_index: AstExtraIndex; // list of UseTreeNode
+}
+
+pub struct UseTreeLeaf {
+    type: AstNodeType;
+    name_sym: Symbol;
+    name_span: SpanIndex;
+    rename_span: OptionalSpanIndex;
+    rename_sym: Symbol;
+}

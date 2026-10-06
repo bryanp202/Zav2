@@ -1,0 +1,197 @@
+use ::std::option::Option;
+
+use super::AstNodeType;
+use super::AstNodeIndex;
+use super::OptionalAstNodeIndex;
+use super::AstExtraIndex;
+use super::SpanIndex;
+use super::symbol::Symbol;
+use super::lexer::TokenType;
+
+pub struct IfExpr {
+    type: AstNodeType;
+    span: SpanIndex;
+    // cond: AstNodeIndex (always +1);
+    then_branch: AstNodeIndex;
+    else_branch: AstNodeIndex;
+}
+
+pub struct BinaryExpr {
+    type: AstNodeType;
+    op: BinaryOp;
+    span: SpanIndex;
+    // lhs: AstNodeIndex (always +1);
+    rhs: AstNodeIndex;
+}
+
+pub struct UnaryExpr {
+    type: AstNodeType;
+    op: UnaryOp;
+    span: SpanIndex;
+    // operand: AstNodeIndex (always +1);
+}
+
+pub struct ConversionExpr {
+    type: AstNodeType;
+    span: SpanIndex;
+    // conv_type: AstNodeIndex (always +1);
+}
+
+pub struct CallExpr {
+    type: AstNodeType;
+    arg_count: u16;
+    span: SpanIndex;
+    // operand: AstNodeIndex (always +1);
+    arg_index: AstExtraIndex; // list of AstNodeIndex (expr)
+}
+
+pub struct NativeExpr {
+    type: AstNodeType;
+    arg_count: u16;
+    span: SpanIndex;
+    operand: SpanIndex;
+    arg_index: AstExtraIndex; // list of AstNodeIndex (expr)
+}
+
+pub struct LambdaExpr {
+    type: AstNodeType;
+    param_count: u16;
+    span: SpanIndex;
+    return_type: OptionalAstNodeIndex;
+    param_index: AstExtraIndex; // list of Parameter
+    // body: AstNodeIndex (always +1);
+}
+
+pub struct ArrayExpr {
+    type: AstNodeType;
+    len_upper: u16;
+    span: SpanIndex;
+    len_lower: u32;
+    child_index: AstExtraIndex; // list of AstNode (expr)
+    // child_type: AstNodeIndex (always +1);
+}
+
+// Also includes unions
+pub struct StructExpr {
+    type: AstNodeType;
+    field_count: u16;
+    span: SpanIndex;
+    field_index: AstExtraIndex; // list of StructExprField
+    // struct_type: AstNodeIndex (always +1);
+}
+
+pub struct TupleExpr {
+    type: AstNodeType;
+    field_count: u16;
+    span: SpanIndex;
+    field_index: AstExtraIndex; // list of AstNode (Expr)
+}
+
+pub struct PrimativeExpr {
+    type: AstNodeType;
+    prim: PrimativeType;
+    span: SpanIndex;
+}
+
+pub struct StructExprField {
+    ident_sym: Symbol;
+    ident_span: SpanIndex;
+    expr: AstNodeIndex;
+}
+
+pub enum BinaryOp {
+    // logical expr
+    LogicalOr,
+    LogicalAnd,
+    // compare expr
+    CompareE,
+    CompareNE,
+    CompareL,
+    CompareLE,
+    CompareG,
+    CompareGE,
+    // bit manipulation expr
+    BitOr,
+    BitXor,
+    BitAnd,
+    // shift expr
+    ShiftR,
+    ShiftL,
+    // term expr
+    TermAdd,
+    TermSub,
+    // factor expr
+    FactorMul,
+    FactorDiv,
+    FactorRem,
+    // trailing expr
+    Index,
+    Field,
+}
+
+pub enum UnaryOp {
+    Invert,
+    Minus,
+    Bang,
+    Ref,
+    Deref,
+}
+
+pub enum PrimativeType {
+    Nullptr,
+    Bool,
+    Int,
+    Float,
+    Char,
+    Str,
+}
+
+pub enum Precedence {
+    None,
+    Ternary,
+    LogicalOr,
+    LogicalAnd,
+    Equal,
+    Compare,
+    BitOr,
+    BitXor,
+    BitAnd,
+    Shift,
+    Term,
+    Factor,
+    PostFix,
+    Primary,
+}
+
+pub fn anyfix_precedence(tt: TokenType) Option[Precedence] {
+    var prec: Precedence = undefined;
+    switch (tt) {
+        TokenType::QuestionMark => prec = Precedence::Ternary;
+        TokenType::Or => prec = Precedence::LogicalOr;
+        TokenType::And => prec = Precedence::LogicalAnd;
+        TokenType::EqualEqual | TokenType::BangEqual => prec = Precedence::Equal;
+        TokenType::Less
+        | TokenType::LessEqual
+        | TokenType::Greater
+        | TokenType::GreaterEqual => prec = Precedence::Compare;
+        TokenType::Pipe => prec = Precedence::BitOr;
+        TokenType::Caret => prec = Precedence::BitXor;
+        TokenType::Ampersand => prec = Precedence::BitAnd;
+        TokenType::ShiftLeft | TokenType::ShiftRight => prec = Precedence::Shift;
+        TokenType::Plus | TokenType::Minus => prec = Precedence::Term;
+        TokenType::Star
+        | TokenType::Slash
+        | TokenType::Percent => prec = Precedence::Factor;
+        TokenType::LeftParen
+        | TokenType::LeftSquare
+        | TokenType::Dot => prec = Precedence::PostFix;
+        else => Option::[Precedence]::None();
+    }
+    return Option::[Precedence]::Some(prec);
+}
+
+pub fn precedence_up(prec: Precedence) Precedence {
+    return prec <= Precedence::PostFix
+        ? (prec as u16 + 1) as Precedence
+        : Precedence::Primary;
+}

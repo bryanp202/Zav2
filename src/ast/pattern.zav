@@ -1,0 +1,31 @@
+use super::AstNodeType;
+use super::AstNodeIndex;
+use super::OptionalAstNodeIndex;
+use super::AstExtraIndex;
+use super::SpanIndex;
+use super::symbol::Symbol;
+
+pub struct IdentPattern {
+    type: AstNodeType;
+    sym: Symbol;
+    span: SpanIndex;
+}
+
+pub struct DestructPattern {
+    type: AstNodeType;
+    ignore_rest: bool;
+    field_count: u16;
+    field_index: AstExtraIndex; // list of DestructPatternField
+}
+
+pub struct TuplePattern {
+    type: AstNodeType;
+    field_count: u16;
+    field_index: AstExtraIndex; // list of patterns
+}
+
+pub struct DestructPatternField {
+    field_sym: Symbol;
+    field_span: SpanIndex;
+    rename_pattern: OptionalAstNodeIndex; // index from original pattern
+}

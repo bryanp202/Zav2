@@ -1,0 +1,87 @@
+use super::AstNodeType;
+use super::AstNodeIndex;
+use super::OptionalAstNodeIndex;
+use super::AstExtraIndex;
+use super::SpanIndex;
+
+pub struct ItemStmt {
+    type: AstNodeType;
+    // item: AstNodeIndex (always +1);
+}
+
+pub struct DeferStmt {
+    type: AstNodeType;
+    err: bool;
+    // expr: AstNodeIndex (always +1);
+}
+
+pub struct DeclStmt {
+    type: AstNodeType;
+    mutable: bool;
+    pattern: AstNodeIndex;
+    decl_type: OptionalAstNodeIndex;
+    // expr: AstNodeIndex (always +1);
+}
+
+pub struct AssignStmt {
+    type: AstNodeType;
+    assign_op: AssignOp;
+    // expr: AstNodeIndex (always +1);
+}
+
+pub struct ExprStmt {
+    type: AstNodeType;
+    // expr: AstNodeIndex (always +1);
+}
+
+pub struct ReturnStmt {
+    type: AstNodeType;
+    err: bool;
+    // expr: AstNodeIndex (always +1);
+}
+
+pub struct IfStmt {
+    type: AstNodeType;
+    // cond: AstNodeIndex (always +1);
+    then_branch: AstNodeIndex;
+    else_branch: OptionalAstNodeIndex;
+}
+
+pub struct WhileStmt {
+    type: AstNodeType;
+    // cond: AstNodeIndex (always +1);
+    body: AstNodeIndex;
+    loop_stmt: AstNodeIndex;
+}
+
+pub struct ForStmt {
+    type: AstNodeType;
+    expr_count: u16; // 2 means only end_expr and start_expr
+    expr_index: AstExtraIndex; // list of AstNode (start_expr, end_expr, ..ptr_expr)
+    binding_count: u16; // 1 means only inc binding
+    binding_index: AstExtraIndex; // list of Identifier (incr, ..ptr_binding)
+    body: AstNodeIndex;
+}
+
+pub struct BlockStmt {
+    type: AstNodeType;
+    len: u32;
+    stmts: AstExtraIndex; // list of AstNodeIndex (stmt)
+}
+
+pub enum AssignOp {
+    CompareE,
+    CompareNE,
+    CompareL,
+    CompareLE,
+    CompareG,
+    CompareGE,
+    BitOr,
+    BitXor,
+    BitAnd,
+    ShiftR,
+    ShiftL,
+    FactorMul,
+    FactorDiv,
+    FactorMod,
+}
