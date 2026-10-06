@@ -385,14 +385,19 @@ struct LineNumCache {
 }
 
 pub enum ErrorType {
+    ExpectedArrayLength,
     ExpectedLeftBrace,
     ExpectedRightBrace,
     ExpectedLeftParen,
     ExpectedRightParen,
+    ExpectedLeftSquare,
+    ExpectedRightSquare,
     InvalidCharLiteral,
     InvalidDigitSeperator,
+    InvalidExpr,
     InvalidNative,
     InvalidScientificNotation,
+    InvalidType,
     UnterminatedBlockComment,
     UnterminatedStringLiteral,
     UnexpectedSymbol,
@@ -403,14 +408,17 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
     switch (type) {
         ErrorType::ExpectedLeftParen => msg = "expected '('";
         ErrorType::ExpectedRightParen => msg = "expected ')'";
+        ErrorType::ExpectedRightSquare => msg = "expected ']'";
         ErrorType::InvalidCharLiteral => msg = "invalid char literal";
         ErrorType::InvalidDigitSeperator => msg = "expected digit seperator to be between two digits";
+        ErrorType::InvalidExpr => msg = "invalid expression";
         ErrorType::InvalidNative => msg = "native must start with an alpha character";
         ErrorType::InvalidScientificNotation => msg = "invalid floating point scientific notation";
+        ErrorType::InvalidType => msg = "invalid type";
         ErrorType::UnterminatedBlockComment => msg = "unterminated block comment";
         ErrorType::UnterminatedStringLiteral => msg = "unterminated string literal";
         ErrorType::UnexpectedSymbol => msg = "unexpected symbol";
-        else => msg = "unknown error";
+        else => @abort("unadded error type: %d\n", type);
     }
     return msg;
 }

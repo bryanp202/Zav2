@@ -2,47 +2,87 @@ pub mod error;
 pub mod lexer;
 pub mod parser;
 pub mod symbol;
+pub mod expr;
+pub mod stmt;
+pub mod item;
+pub mod pattern;
+pub mod ty;
 
-use ::std::range::Range;
+use ::std::slice::Slice;
 use ::std::path::PathBuf;
+use ::std::fmt::Formatter;
 use ::std::collections::list::List;
 
 use symbol::Symbol;
-use lexer::Token;
+use ty::IntType;
+use ty::UintType;
 
 pub struct UnresolvedModule {
     path: PathBuf;
     canonical_name: Symbol;
-    submods: List[SubModule];
-    // Storage
-    nodes: List[AstNode];
-    extra: List[AstNodeIndex];
-    tokens: List[Token];
+    ast: Ast;
 
-    pub fn new(path: PathBuf, canonical_name: Symbol) UnresolvedModule {
+    pub fn new(path: PathBuf, canonical_name: Symbol, ast: Ast) UnresolvedModule {
         var self: UnresolvedModule = undefined;
         self.path = path;
         self.canonical_name = canonical_name;
-        self.submods = List::[SubModule]::new();
-        self.nodes = List::[AstNode]::new();
-        self.extra = List::[AstNodeIndex]::new();
-        self.tokens = List::[Token]::new();
+        self.ast = ast;
         return self;
     }
 
     pub fn free(self: *const UnresolvedModule) void {
         self.path.free();
-        self.submods.free();
-        // storage
-        self.nodes.free();
-        self.extra.free();
-        self.tokens.free();
+        self.ast.free();
     }
 }
 
-pub struct SubModule {
-  path: PathBuf;
-  canonical_name: Symbol;
+pub struct Ast {
+    nodes: List[u32];
+    extra: List[u32];
+    spans: List[Span];
+
+    pub fn new() Ast {
+        var self: Ast = undefined;
+        self.nodes = List::[u32]::new();
+        self.extra = List::[u32]::new();
+        self.spans = List::[Span]::new();
+        return self;
+    }
+
+    pub fn free(self: *const Ast) void {
+        self.nodes.free();
+        self.extra.free();
+        self.spans.free();
+    }
+
+    pub fn fmt(self: *const Ast, fmt: *Formatter) void {
+        if (self.nodes.is_empty()) {
+            fmt.unsafe_cstr_ptr("[empty]");
+            return;
+        }
+
+        var index: AstNodeIndex = undefined;
+        index._private_index = 0 as u32;
+        self.display_node(fmt, index);
+    }
+
+    fn display_node(self: *const Ast, fmt: *Formatter, index: AstNodeIndex) void {
+        const node = &self.nodes.items[index._private_index];
+        const type = node.* as AstNodeType;
+        switch (type) {
+            AstNodeType::VoidType => fmt.unsafe_cstr_ptr("void");
+            AstNodeType::BoolType => fmt.unsafe_cstr_ptr("bool");
+            AstNodeType::IntType => {
+                fmt.unsafe_cstr_ptr("i");
+                fmt.uint((node as *IntType).bits);
+            }
+            AstNodeType::UintType => {
+                fmt.unsafe_cstr_ptr("u");
+                fmt.uint((node as *UintType).bits);
+            }
+            else => @abort("unsupported node type: %llu\n", type);
+        }
+    }
 }
 
 pub struct Span {
@@ -61,174 +101,163 @@ pub struct Span {
     }
 }
 
-/// 4294967295 is null in optional cases
 pub struct AstNodeIndex {
-    _private_id: u32;
+    _private_index: u32;
 
     overload== (self: AstNodeIndex, other: AstNodeIndex) bool {
-        return self._private_id == other._private_id;
+        return self._private_index == other._private_index;
     }
 }
 
-/// 4294967295 is null in optional cases
-pub struct AstTokenIndex {
-    _private_id: u32;
+/// 4294967295 is null
+pub struct OptionalAstNodeIndex {
+    _private_index: u32;
 
-    overload== (self: AstTokenIndex, other: AstTokenIndex) bool {
-        return self._private_id == other._private_id;
+    fn is_some(self: *const OptionalAstNodeIndex) bool {
+        return self._private_index == 4294967295;
+    }
+
+    overload== (self: OptionalAstNodeIndex, other: OptionalAstNodeIndex) bool {
+        return self._private_index == other._private_index;
     }
 }
 
-pub struct AstNode {
-    span: Span;
-    token: AstTokenIndex;
+pub struct SpanIndex {
+    _private_index: u32;
+
+    overload== (self: SpanIndex, other: SpanIndex) bool {
+        return self._private_index == other._private_index;
+    }
+}
+
+/// 4294967295 is null
+pub struct OptionalSpanIndex {
+    _private_index: u32;
+
+    fn is_some(self: *const OptionalSpanIndex) bool {
+        return self._private_index == 4294967295;
+    }
+
+    overload== (self: OptionalSpanIndex, other: OptionalSpanIndex) bool {
+        return self._private_index == other._private_index;
+    }
+}
+
+pub struct AstExtraIndex {
+    _private_index: u32;
+
+    overload== (self: AstExtraIndex, other: AstExtraIndex) bool {
+        return self._private_index == other._private_index;
+    }
+}
+
+pub struct Identifier {
+    sym: Symbol;
+    span: SpanIndex;
+}
+
+pub struct Parameter {
+    pattern: AstNodeIndex;
+    ty: AstNodeIndex;
+}
+
+pub struct IdentNode {
     type: AstNodeType;
-    data: AstNodeData;
+    generic_count: u8;
+    sym: Symbol;
+    span: SpanIndex;
+    generics: AstExtraIndex; // AstNodeIndex (types)
+}
+
+// degrades into a "null" terminated list if no generics
+pub struct ScopeNode {
+    type: AstNodeIndex;
+    absolute: bool;
+    generic_count: u8;
+    ident_sym: Symbol;
+    ident_span: SpanIndex;
+    // next: AstNodeIndex (always +1);
+}
+
+pub struct AstPoison {
+    type: AstNodeType;
+    span: SpanIndex;
+
+    pub fn new(span: SpanIndex) AstPoison {
+        var self: AstPoison = undefined;
+        self.type = AstNodeType::Poison;
+        self.span = span;
+        return self;
+    }
 }
 
 pub enum AstNodeType {
     /* item */
-    ItemVarDecl,
-    ItemConstDecl,
-    ItemModule,
-    ItemUse,
-    ItemFn,
-    ItemStruct,
-    ItemUnion,
-    ItemEnum,
-    ItemGeneric,
+    DeclItem,
+    ModuleItem,
+    FnItem,
+    StructItem,
+    UnionItem,
+    EnumItem,
+    UseItem,
+    /* use tree */
+    UseTreeNode,
+    UseTreeBranch,
+    UseTreeLeaf,
 
     /* stmt: maybe all expr at somepoint */
     // special stmt
-    StmtDefer,
-    StmtDeferErr,
-    StmtVarDecl,
-    StmtConstDecl,
-    // mutate stmt
-    StmtMutateEq,
-    StmtMutateCompareE,
-    StmtMutateCompareNE,
-    StmtMutateCompareL,
-    StmtMutateCompareLE,
-    StmtMutateCompareG,
-    StmtMutateCompareGE,
-    StmtMutateBitOr,
-    StmtMutateBitXor,
-    StmtMutateBitAnd,
-    StmtMutateShiftR,
-    StmtMutateShiftL,
-    StmtMutateFactorMul,
-    StmtMutateFactorDiv,
-    StmtMutateFactorMod,
+    ItemStmt,
+    DeferStmt,
+    DeclStmt,
     // other stmt
-    StmtExpr,
-    StmtReturn,
-    StmtReturnErr,
-    StmtIf,
-    StmtWhile,
-    StmtFor,
-    StmtBlock,
-    StmtBreak,
-    StmtContinue,
+    AssignStmt,
+    ExprStmt,
+    ReturnStmt,
+    BreakStmt,
+    ContinueStmt,
+    IfStmt,
+    WhileStmt,
+    ForStmt,
+    BlockStmt,
     StmtSwitch,
 
     /* expr */
-    // ternary expr
-    TernaryIf,
-    // logical expr
-    LogicalOr,
-    LogicalAnd,
-    // compare expr
-    CompareE,
-    CompareNE,
-    CompareL,
-    CompareLE,
-    CompareG,
-    CompareGE,
-    // bit manipulation expr
-    BitOr,
-    BitXor,
-    BitAnd,
-    // shift expr
-    ShiftR,
-    ShiftL,
-    // term expr
-    TermAdd,
-    TermSub,
-    // factor expr
-    FactorMul,
-    FactorDiv,
-    FactorRem,
-    // conv expr
+    TernaryExpr,
+    BinaryExpr,
     Conversion,
-    // unary expr
-    UnaryInvert,
-    UnaryMinus,
-    UnaryBang,
-    UnaryAmp,
-    // trailing expr
-    TrailingCall,
-    TrailingIndex,
-    TrailingField,
-    TrailingDeref,
-    // literal
-    LiteralNullptr,
-    LiteralBool,
-    LiteralInt,
-    LiteralFloat,
-    LiteralChar,
-    LiteralStr,
-    LiteralArr,
-    LiteralNative,
-    LiteralLambda,
+    UnaryExpr,
+    CallExpr,
+    NativeExpr,
+    LambdaExpr,
+    ArrayExpr,
+    StructExpr,
+    TupleExpr,
+    IdentExpr,
+    ScopeExpr,
+    PrimativeExpr,
 
     /* types */
-    TypeVoid,
-    TypeBool,
-    TypeUint,
-    TypeInt,
-    TypeFloat32,
-    TypeFloat64,
-    TypePtr,
-    TypeArr,
+    VoidType,
+    BoolType,
+    UintType,
+    IntType,
+    FloatType,
+    PtrType,
+    ArrayType,
+    FnType,
+    TupleType,
+    IdentType,
+    ScopedIdentType,
 
     /* patterns */
     PatternDestruct,
-    PatternRange,
-    PatternRef,
-    PatternOr,
-    PatternRest,
+    PatternTuple,
+    PatternIdent,
 
     /* shared */
-    Path,
+    ScopedIdentifier,
+    ScopeSegment,
+    Identifier,
     Poison,
-}
-
-pub union AstNodeData {
-    node: AstNodeIndex;
-    token_and_node: TokenAndNode;
-    node_and_node: NodeAndNode;
-    node_and_extra: NodeAndExtra;
-    extra_and_node: ExtraAndNode;
-    extra: Range[AstNodeIndex];
-}
-
-pub struct TokenAndNode {
-    token: AstTokenIndex;
-    node: AstNodeIndex;
-}
-
-pub struct NodeAndNode {
-    node1: AstNodeIndex;
-    node2: AstNodeIndex;
-}
-
-pub struct NodeAndExtra {
-    node: AstNodeIndex;
-    extra: Range[AstNodeIndex];
-}
-
-pub struct ExtraAndNode {
-    extra: Range[AstNodeIndex];
-    node: AstNodeIndex;
 }

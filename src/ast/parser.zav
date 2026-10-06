@@ -5,13 +5,17 @@ use ::std::io::IoError;
 use ::std::io::fs;
 use ::std::result::Result;
 use ::std::range::Range;
+use ::std::mem;
+use ::std::tuple::Tuple2;
 
 use super::UnresolvedModule;
-use super::Span;
-use super::AstNode;
-use super::AstNodeIndex;
-use super::AstTokenIndex;
+use super::Ast;
 use super::AstNodeType;
+use super::Span;
+use super::SpanIndex;
+use super::AstNodeIndex;
+use super::AstExtraIndex;
+use super::OptionalAstNodeIndex;
 use super::symbol::Symbol;
 use super::symbol::SymbolInterner;
 use super::lexer::Lexer;
@@ -20,19 +24,37 @@ use super::lexer::TokenType;
 use super::error::ErrorCache;
 use super::error::Error;
 use super::error::ErrorType;
+use super::super::ast as ast;
+use super::expr;
+use super::expr::Precedence;
 
 pub struct ParseResult {
     module: UnresolvedModule;
+    submods: List[SubModule];
     error_cache: ErrorCache;
+
+    pub fn new(module: UnresolvedModule, submods: List[SubModule], error_cache: ErrorCache) ParseResult {
+        var self: ParseResult = undefined;
+        self.module = module;
+        self.submods = submods;
+        self.error_cache = error_cache;
+        return self;
+    }
 
     pub fn free(self: *const ParseResult) void {
         self.module.free();
+        self.submods.free();
         self.error_cache.free();
     }
 
     pub fn had_error(self: *const ParseResult) bool {
         return !self.error_cache.errors.is_empty();
     }
+}
+
+pub struct SubModule {
+    path: PathBuf;
+    canonical_name: Symbol;
 }
 
 pub struct Parser {
@@ -42,113 +64,132 @@ pub struct Parser {
     curr: Token;
     prev: Token;
     src: Slice[u8];
-    // result
-    module: UnresolvedModule;
-    errors: List[Error];
-    
+    scratch: List[u32];
+    // data
+    path: PathBuf;
+    ast: Ast;
+    submods: List[SubModule];
+    errors: List[Error];    
 
-    fn new(src: Slice[u8], interner: SymbolInterner) Parser {
+    fn new(interner: SymbolInterner, path: PathBuf, src: Slice[u8]) Parser {
         var self: Parser = undefined;
         self.lexer = Lexer::new(src);
         self.interner = interner;
-        self.errors = List::[Error]::new();
+        // cache
         self.curr.type = TokenType::Eof;
         self.prev.type = TokenType::Eof;
         self.src = src;
+        self.scratch = List::[u32]::new();
+        // data
+        self.path = path;
+        self.ast = Ast::new();
+        self.submods = List::[SubModule]::new();
+        self.errors = List::[Error]::new();
         return self;
     }
 
     fn free(self: *const Parser) void {
         self.interner.free();
+        self.scratch.free();
     }
 
     pub fn parse(path: PathBuf, interner: SymbolInterner) Result[ParseResult, IoError] {
+        edefer { path.free(); interner.free(); }
+
         const file_contents = fs::read_file(path.as_cstr());
         if (file_contents.is_err()) {
-            path.free();
-            return Result::[ParseResult, IoError]::Err(file_contents.unwrap_err());
+            ereturn Result::[ParseResult, IoError]::Err(file_contents.unwrap_err());
         }
         const src = file_contents.unwrap_ok();
         defer src.free();
 
-        var parser = Parser::new(src.as_slice(), interner);
+        var parser = Parser::new(interner, path, src.as_slice());
         defer parser.free();
-        return Result::[ParseResult, IoError]::Ok(parser.parse_ast(path));
+        return Result::[ParseResult, IoError]::Ok(parser.parse_ast());
     }
 
-    fn parse_ast(self: *Parser, path: PathBuf) ParseResult {
-        var result: ParseResult = undefined;
-        self.module = UnresolvedModule::new(path.clone(), self.interner.intern(Slice::[u8]::new(".", @len(".".*))));
-
+    fn parse_ast(self: *Parser) ParseResult {
         self.advance();
         while (!self.at_end()) {
-            self.advance();
-        }
-
-        result.module = self.module;
-        result.error_cache = ErrorCache::from_error_list(path, self.src, self.errors);
-        return result;
-    }
-
-    ///////////////////////
-    // Glbl Item Parsing //
-    ///////////////////////
-    /// Expects item functions to return true on error
-    fn parse_item(self: *Parser) void {
-        const is_public = self.match(TokenType::Pub);
-
-        var ret: bool = undefined;
-        switch (self.curr.type) {
-            TokenType::Fn => ret = self.parse_fn(is_public);
-            else => {
-                self.error(ErrorType::UnexpectedSymbol);
-                ret = false;
+            const type = self.parse_type();
+            if (type.is_err()) {
+                self.local_synchronize();
             }
         }
-        
-        if (ret) {
-            self.global_synchronize();
-        }
+
+        var fmt = ::std::fmt::Formatter::new_for_terminal();
+        defer fmt.free();
+        self.ast.fmt(&fmt);
+        fmt.newline();
+        fmt.print();
+
+        return ParseResult::new(
+            UnresolvedModule::new(
+                self.path.clone(),
+                self.interner.intern(Slice::[u8]::new(".", @len(".".*))),
+                self.ast,
+            ),
+            self.submods,
+            ErrorCache::from_error_list(self.path, self.src, self.errors),
+        );
     }
 
-    fn parse_fn(self: *Parser, is_public: bool) bool {
-        const span_start = self.prev.lexeme.ptr;
-
-        if (!self.eat(TokenType::Identifier, ErrorType::UnexpectedSymbol)) ereturn true;
-        const name = self.store_prev_token();
-
-        self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen);
-        const params = self.parse_fn_params();
-        self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen);
-
-        const ret_type = self.parse_type();
-        if (!self.eat(TokenType::LeftBrace, ErrorType::ExpectedLeftBrace)) ereturn true;
-        const body = self.parse_stmt_block();
-
-        var node: AstNode = undefined;
-        node.span = self.emit_span(span_start);
-        node.token = name;
-        node.type = AstNodeType::ItemFn;
-        node.data.extra_and_node.extra = params;
-        node.data.extra_and_node.node = body;
-
-        return false;
-    }
-
-    fn parse_fn_params(self: *Parser) Range[AstNodeIndex] {
-
-    }
+    ///////////////////////
+    //    Item Parsing   //
+    ///////////////////////
 
     ///////////////////////
     // Statement Parsing //
     ///////////////////////
-    fn parse_stmt_block(self: *Parser) AstNodeIndex {
-
-    }
 
     ////////////////////////
     // Expression Parsing //
     ////////////////////////
+    fn parse_expr(self: *Parser) Result[AstNodeIndex, void] {
+        return self.parse_expr_with_precedence(expr::precedence_up(Precedence::None));
+    }
+
+    fn parse_expr_with_precedence(self: *Parser, prec: Precedence) Result[AstNodeIndex, void] {
+        const expr = self.parse_prefix_expr();
+        if (expr.is_err()) {
+            ereturn expr;
+        }
+        return self.parse_anyfix_expr(expr.unwrap_ok(), prec);
+    }
+
+    fn parse_prefix_expr(self: *Parser) Result[AstNodeIndex, void] {
+        const token = self.advance();
+        switch (token.type) {
+            TokenType::Plus
+            | TokenType::Minus
+            | TokenType::Tilde
+            | TokenType::Ampersand
+            | TokenType::Bang => return self.parse_unary_expr(token);
+            TokenType::LeftParen => return self.parse_grouping_expr(token);
+            TokenType::Scope | TokenType::Identifier => return self.parse_ident_expr(token);
+            else => @abort("todo");// return Result::[AstNodeIndex, void]::Err(self.error(ErrorType::InvalidExpr));
+        }
+    }
+
+    fn parse_anyfix_expr(
+        self: *Parser,
+        prefix_expr: AstNodeIndex,
+        prec: Precedence,
+    ) Result[AstNodeIndex, void] {
+        @abort("todo");
+    }
+
+    pub fn parse_unary_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        @abort("todo");
+    }
+
+    pub fn parse_grouping_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        @abort("todo");
+    }
+
+    pub fn parse_ident_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        @abort("todo");
+    }
 
     ////////////////////////
     //   Pattern Parsing  //
@@ -157,14 +198,186 @@ pub struct Parser {
     ////////////////////////
     //    Type Parsing    //
     ////////////////////////
-    fn parse_type(self: *Parser) void {
+    fn parse_type(self: *Parser) Result[AstNodeIndex, void] {
+        const token = self.advance();
+        var index: AstNodeIndex = undefined;
+        switch (token.type) {
+            TokenType::VoidType => {
+                const node = ast::ty::VoidType::new(self.store_span_since(token));
+                index = self.store_node(&node as *u32, @sizeof(node));
+            }
+            TokenType::BoolType => {
+                const node = ast::ty::BoolType::new(self.store_span_since(token));
+                index = self.store_node(&node as *u32, @sizeof(node));
+            }
+            TokenType::I8Type
+            | TokenType::I16Type
+            | TokenType::I32Type
+            | TokenType::I64Type => {
+                const bits = token.type == TokenType::I8Type ? 8
+                    : token.type == TokenType::I16Type ? 16
+                    : token.type == TokenType::I32Type ? 32
+                    : 64;
+                const node = ast::ty::IntType::new(self.store_span_since(token), bits as u16);
+                index = self.store_node(&node as *u32, @sizeof(node));
+            }
+            TokenType::U8Type
+            | TokenType::U16Type
+            | TokenType::U32Type
+            | TokenType::U64Type => {
+                const bits = token.type == TokenType::U8Type ? 8
+                    : token.type == TokenType::U16Type ? 16
+                    : token.type == TokenType::U32Type ? 32
+                    : 64;
+                const node = ast::ty::UintType::new(self.store_span_since(token), bits as u16);
+                index = self.store_node(&node as *u32, @sizeof(node));
+            }
+            TokenType::F32Type | TokenType::F64Type => {
+                const bits = token.type == TokenType::F32Type ? 32 : 64;
+                const node = ast::ty::FloatType::new(self.store_span_since(token), bits as u16);
+                index = self.store_node(&node as *u32, @sizeof(node));
+            }
+            TokenType::Star => return self.parse_ptr_type(token);
+            TokenType::LeftSquare => return self.parse_arr_type(token);
+            TokenType::Fn => return self.parse_fn_type(token);
+            TokenType::LeftParen => return self.parse_tuple_type(token);
+            TokenType::Scope | TokenType::Identifier => return self.parse_user_type(token);
+            else => return Result::[AstNodeIndex, void]::Err(self.error(ErrorType::InvalidType));
+        }
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
 
+    fn parse_ptr_type(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const mutable = !self.match(TokenType::Const);
+        const index = self.reserve_node(@sizeof(ast::ty::PtrType::new(0 as SpanIndex, false)));
+        edefer self.unreserve_node(index);
+
+        const child = self.parse_type();
+        if (child.is_err()) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = ast::ty::PtrType::new(
+            self.store_span_since(token),
+            mutable,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_arr_type(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(ast::ty::ArrayType::new(0 as SpanIndex, 0 as AstNodeIndex)));
+        edefer self.unreserve_node(index);
+
+        const len = self.parse_expr();
+        if (len.is_err()) {
+            ereturn len;
+        }
+        // ignore result of eat because user might have just forgotten to add ']'
+        self.eat(TokenType::RightSquare, ErrorType::ExpectedRightSquare);
+
+        const child = self.parse_type();
+        if (child.is_err()) {
+            ereturn child;
+        }
+        const node = ast::ty::ArrayType::new(
+            self.store_span_since(token),
+            child.unwrap_ok(),
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_fn_type(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(ast::ty::FnType::new(0 as SpanIndex, 0 as u16, 0 as AstExtraIndex)));
+        edefer self.unreserve_node(index);
+        const field_start = self.start_scratch();
+        defer self.clear_scratch(field_start);
+
+        // user might have just forgotten '(' so try to continue
+        self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen);
+        while (!self.check(TokenType::RightParen)) {
+            const type = self.parse_type();
+            if (type.is_err()) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+            const field_type_index = type.unwrap_ok();
+            self.scratch.push(field_type_index._private_index);
+            if (!self.match(TokenType::Comma)) {
+                break;
+            }
+        }
+        // user might have just forgotten ')' so try to continue
+        self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen);
+        const {_0: field_index, _1: field_count } = self.store_extra(field_start);
+        if (field_count > 65535) {
+            const path_slice = self.path.as_slice();
+            @abort("Tuple type field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+
+        const ret_type = self.parse_type();
+        if (ret_type.is_err()) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = ast::ty::FnType::new(
+            self.store_span_since(token),
+            field_count as u16,
+            field_index,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_tuple_type(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(ast::ty::TupleType::new(0 as SpanIndex, 0 as u16, 0 as AstExtraIndex)));
+        edefer self.unreserve_node(index);
+        const field_start = self.start_scratch();
+        defer self.clear_scratch(field_start);
+
+        while (!self.check(TokenType::RightParen)) {
+            const type = self.parse_type();
+            if (type.is_err()) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+            const field_type_index = type.unwrap_ok();
+            self.scratch.push(field_type_index._private_index);
+            if (!self.match(TokenType::Comma)) {
+                break;
+            }
+        }
+        // user might have just forgotten ')' so try to continue
+        self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen);
+        const {_0: field_index, _1: field_count } = self.store_extra(field_start);
+        if (field_count > 65535) {
+            const path_slice = self.path.as_slice();
+            @abort("Tuple type field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+
+        const node = ast::ty::TupleType::new(
+            self.store_span_since(token),
+            field_count as u16,
+            field_index,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_user_type(parser: *Parser, token: Token) Result[AstNodeIndex, void] {
+        return Result::[AstNodeIndex, void]::Err(0 as void);
     }
 
     /////////////////////
     // Private Helpers //
     /////////////////////
     fn error(self: *Parser, type: ErrorType) void {
+        const start = self.prev.lexeme.ptr - self.src.ptr;
+        self.errors.push(
+            Error::new(type, start as u32, self.prev.lexeme.len as u32),
+        );
+    }
+
+    fn error_curr(self: *Parser, type: ErrorType) void {
         const start = self.curr.lexeme.ptr - self.src.ptr;
         self.errors.push(
             Error::new(type, start as u32, self.curr.lexeme.len as u32),
@@ -184,12 +397,13 @@ pub struct Parser {
         self.curr = self.lexer.next_token();
     }
 
-    fn advance(self: *Parser) void {
+    fn advance(self: *Parser) Token {
         self.advance_unchecked();
         while (self.check(TokenType::Error)) {
-            self.error(self.curr.err);
+            self.error_curr(self.curr.err);
             self.curr = self.lexer.next_token();
         }
+        return self.prev;
     }
 
     fn match(self: *Parser, tt: TokenType) bool {
@@ -205,26 +419,44 @@ pub struct Parser {
             self.advance_unchecked();
             return true;
         }
-        self.error(err);
+        self.error_curr(err);
         return false;
     }
 
     fn global_synchronize(self: *Parser) void {
-        while (true) {
+        while (!self.at_end()) {
             switch (self.prev.type) {
                 TokenType::Semicolon
-                | TokenType::LeftBrace => return;
+                | TokenType::RightBrace => return;
             }
 
             switch (self.curr.type) {
-                TokenType::Var
-                | TokenType::Const
-                | TokenType::Pub
-                | TokenType::Use
-                | TokenType::Fn
-                | TokenType::Mod
-                | TokenType::Union
+                TokenType::Pub
+                | TokenType::Var | TokenType::Const
+                | TokenType::Use | TokenType::Fn
+                | TokenType::Mod | TokenType::Union
                 | TokenType::Enum => return;
+            }
+            self.advance();
+        }
+    }
+
+    fn local_synchronize(self: *Parser) void {
+        while (!self.at_end()) {
+            switch (self.prev.type) {
+                TokenType::Semicolon
+                | TokenType::RightBrace
+                | TokenType::RightParen => return;
+            }
+
+            switch (self.curr.type) {
+                TokenType::Var | TokenType::Const
+                | TokenType::Use | TokenType::Fn
+                | TokenType::Union | TokenType::Enum
+                | TokenType::If | TokenType::While
+                | TokenType::For | TokenType::Compif
+                | TokenType::LeftBrace
+                | TokenType::LeftParen => return;
             }
             self.advance();
         }
@@ -233,16 +465,81 @@ pub struct Parser {
     /////////////
     // Storage //
     /////////////
-    fn store_prev_token(self: *Parser) AstTokenIndex {
-        var token_index: AstTokenIndex = undefined;
-        token_index._private_id = self.module.tokens.len as u32;
-        self.module.tokens.push(self.prev);
-        return token_index;
+    fn store_span(self: *Parser) SpanIndex {
+        return self.store_span_since(self.curr);
     }
 
-    fn emit_span(self: *const Parser, start_ptr: *const u8) Span {
-        const start = (start_ptr - self.src.ptr) as u32; 
-        const len = (self.prev.lexeme.ptr + self.prev.lexeme.len - start_ptr) as u32;
-        return Span::new(start, len);
+    fn store_span_since(self: *Parser, token: Token) SpanIndex {
+        var index: SpanIndex = undefined;
+        const start = (token.lexeme.ptr - self.src.ptr) as u32; 
+        const len = (self.curr.lexeme.ptr - token.lexeme.ptr + self.curr.lexeme.len) as u32;
+        
+        if (self.ast.spans.len > 4294967295) {
+            const path_slice = self.path.as_slice();
+            @abort("Ast overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+        index._private_index = self.ast.spans.len as u32;
+        self.ast.spans.push(Span::new(start, len));
+        return index;
+    }
+
+    fn store_poison_node(self: *Parser, span: SpanIndex) AstNodeIndex {
+        const node = ast::AstPoison::new(span);
+        return self.store_node(&node as *u32, @sizeof(node));
+    }
+
+    fn reserve_node(self: *Parser, node_size_bytes: u64) AstNodeIndex {
+        if (self.ast.nodes.len > 4294967295) {
+            const path_slice = self.path.as_slice();
+            @abort("Ast overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+
+        var index: AstNodeIndex = undefined;
+        index._private_index = self.ast.nodes.len as u32;
+        const chunks = node_size_bytes / @sizeof(0 as u32);
+        self.ast.nodes.reserve(chunks);
+        self.ast.nodes.items[self.ast.nodes.len - chunks] = chunks as u32;
+        return index;
+    }
+
+    fn unreserve_node(self: *Parser, index: AstNodeIndex) void {
+        const n = self.ast.nodes.len - index._private_index;
+        self.ast.nodes.unsafe_npop(n);
+    }
+
+    fn set_node(self: *Parser, index: AstNodeIndex, node: *const u32) void {
+        const ast_node = &self.ast.nodes.items[index._private_index];
+        const chunks = ast_node.*;
+        mem::cpy::[u32](chunks, ast_node, node);
+    }
+
+    fn store_node(self: *Parser, node: *const u32, node_size_bytes: u64) AstNodeIndex {
+        const index = self.reserve_node(node_size_bytes);
+        self.set_node(index, node);
+        return index;
+    }
+
+    fn start_scratch(self: *const Parser) u64 {
+        return self.scratch.len;
+    }
+
+    fn clear_scratch(self: *Parser, start: u64) void {
+        const n = self.scratch.len - start;
+        self.scratch.unsafe_npop(n);
+    }
+
+    // Returns the length of the extra span
+    fn store_extra(self: *Parser, start: u64) Tuple2[AstExtraIndex, u64] {
+        var index: AstExtraIndex = undefined;
+        const n = self.scratch.len - start;
+        const extra = Slice::[u32]::new(&self.scratch.items[start], n);
+
+        if (self.ast.extra.len > 4294967295) {
+            const path_slice = self.path.as_slice();
+            @abort("Ast extra overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+        index._private_index = self.ast.extra.len as u32;
+        self.ast.extra.push_slice(extra);
+        return Tuple2::[AstExtraIndex, u64]::new(index, n);
     }
 }
