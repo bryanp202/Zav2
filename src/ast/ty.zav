@@ -184,22 +184,22 @@ pub struct TupleType {
     type: AstNodeType;
     field_count: u16;
     span: SpanIndex;
-    field_index: AstExtraIndex; // list of types
+    fields: AstExtraIndex; // list of types
 
-    pub fn new(span: SpanIndex, field_count: u16, field_index: AstExtraIndex) TupleType {
+    pub fn new(span: SpanIndex, field_count: u16, fields: AstExtraIndex) TupleType {
         var self: TupleType = undefined;
         self.type = AstNodeType::TupleType;
         self.field_count = field_count;
         self.span = span;
-        self.field_index = field_index;
+        self.fields = fields;
         return self;
     }
 
     pub fn fmt(self: *const TupleType, fmt: *Formatter, ast: *const Ast) void {
         fmt.unsafe_cstr_ptr("(");
         if (self.field_count >= 1) {
-            ast.display_node(fmt, ast.extra.items[self.field_index._private_index]);
-            for (1..self.field_count, &ast.extra.items[self.field_index._private_index + 1]) |_, param| {
+            ast.display_node(fmt, ast.extra.items[self.fields._private_index]);
+            for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, param| {
                 fmt.unsafe_cstr_ptr(", ");
                 ast.display_node(fmt, param.*);
             }

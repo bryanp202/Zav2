@@ -239,9 +239,8 @@ pub enum AstNodeType {
     StmtSwitch,
 
     /* expr */
-    TernaryExpr,
+    IfExpr,
     BinaryExpr,
-    Conversion,
     UnaryExpr,
     CallExpr,
     NativeExpr,

@@ -1,19 +1,41 @@
 use ::std::option::Option;
+use ::std::fmt::Formatter;
 
+use super::Ast;
 use super::AstNodeType;
 use super::AstNodeIndex;
 use super::OptionalAstNodeIndex;
 use super::AstExtraIndex;
 use super::SpanIndex;
+use super::Parameter;
 use super::symbol::Symbol;
 use super::lexer::TokenType;
 
 pub struct IfExpr {
     type: AstNodeType;
+    pad: u16;
     span: SpanIndex;
     // cond: AstNodeIndex (always +1);
     then_branch: AstNodeIndex;
     else_branch: AstNodeIndex;
+
+    pub fn new(span: SpanIndex, then_branch: AstNodeIndex, else_branch: AstNodeIndex) IfExpr {
+        var self: IfExpr = undefined;
+        self.type = AstNodeType::IfExpr;
+        self.pad = 0 as u16;
+        self.span = span;
+        self.then_branch = then_branch;
+        self.else_branch = else_branch;
+        return self;
+    }
+
+    pub fn fmt(self: *const IfExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        ast.display_next_node(fmt, index, @sizeof(self.*));
+        fmt.unsafe_cstr_ptr("?");
+        ast.display_node(fmt, self.then_branch._private_index);
+        fmt.unsafe_cstr_ptr(":");
+        ast.display_node(fmt, self.else_branch._private_index);
+    }
 }
 
 pub struct BinaryExpr {
@@ -22,19 +44,84 @@ pub struct BinaryExpr {
     span: SpanIndex;
     // lhs: AstNodeIndex (always +1);
     rhs: AstNodeIndex;
+
+    pub fn new(span: SpanIndex, op: BinaryOp, rhs: AstNodeIndex) BinaryExpr {
+        var self: BinaryExpr = undefined;
+        self.type = AstNodeType::BinaryExpr;
+        self.op = op;
+        self.span = span;
+        self.rhs = rhs;
+        return self;
+    }
+
+    pub fn fmt(self: *const BinaryExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        ast.display_next_node(fmt, index, @sizeof(self.*));
+        var op: *const u8 = undefined;
+        switch (self.op) {
+            BinaryOp::LogicalOr => op = "or";
+            BinaryOp::LogicalAnd => op = "and";
+            BinaryOp::CompareE => op = "==";
+            BinaryOp::CompareNE => op = "!=";
+            BinaryOp::CompareL => op = "<";
+            BinaryOp::CompareLE => op = "<=";
+            BinaryOp::CompareG => op = ">";
+            BinaryOp::CompareGE => op = ">=";
+            BinaryOp::BitOr => op = "|";
+            BinaryOp::BitXor => op = "^";
+            BinaryOp::BitAnd => op = "&";
+            BinaryOp::ShiftR => op = ">>";
+            BinaryOp::ShiftL => op = "<<";
+            BinaryOp::TermAdd => op = "+";
+            BinaryOp::TermSub => op = "-";
+            BinaryOp::FactorMul => op = "*";
+            BinaryOp::FactorDiv => op = "/";
+            BinaryOp::FactorRem => op = "%";
+            BinaryOp::Index => op = ".";
+            BinaryOp::Conversion => op = "as";
+            BinaryOp::Field => {
+                fmt.unsafe_cstr_ptr("[");
+                ast.display_node(fmt, self.rhs._private_index);
+                fmt.unsafe_cstr_ptr("]");
+                return;
+            }
+        }
+        fmt.unsafe_cstr_ptr(op);
+        ast.display_node(fmt, self.rhs._private_index);
+    }
 }
 
 pub struct UnaryExpr {
     type: AstNodeType;
+    pad: u16;
     op: UnaryOp;
     span: SpanIndex;
     // operand: AstNodeIndex (always +1);
-}
 
-pub struct ConversionExpr {
-    type: AstNodeType;
-    span: SpanIndex;
-    // conv_type: AstNodeIndex (always +1);
+    pub fn new(span: SpanIndex, op: UnaryOp) UnaryExpr {
+        var self: UnaryExpr = undefined;
+        self.type = AstNodeType::UnaryExpr;
+        self.pad = 0 as u16;
+        self.op = op;
+        self.span = span;
+        return self;
+    }
+
+    pub fn fmt(self: *const UnaryExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        var op: *const u8 = undefined;
+        switch (self.op) {
+            UnaryOp::Invert => op = "~";
+            UnaryOp::Minus => op = "-";
+            UnaryOp::Bang => op = "!";
+            UnaryOp::Ref => op = "&";
+            UnaryOp::Deref => {
+                ast.display_next_node(fmt, index, @sizeof(self.*));
+                fmt.unsafe_cstr_ptr(".*");
+                return;
+            }
+        }
+        fmt.unsafe_cstr_ptr(op);
+        ast.display_next_node(fmt, index, @sizeof(self.*));
+    }
 }
 
 pub struct CallExpr {
@@ -42,24 +129,108 @@ pub struct CallExpr {
     arg_count: u16;
     span: SpanIndex;
     // operand: AstNodeIndex (always +1);
-    arg_index: AstExtraIndex; // list of AstNodeIndex (expr)
+    args: AstExtraIndex; // list of AstNodeIndex (expr)
+
+    pub fn new(span: SpanIndex, arg_count: u16, args: AstExtraIndex) CallExpr {
+        var self: CallExpr = undefined;
+        self.type = AstNodeType::CallExpr;
+        self.arg_count = arg_count;
+        self.span = span;
+        self.args = args;
+        return self;
+    }
+
+    pub fn fmt(self: *const CallExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        ast.display_next_node(fmt, index, @sizeof(self.*));
+        fmt.unsafe_cstr_ptr("(");
+        if (self.arg_count > 1) {
+            ast.display_node(fmt, ast.extra.items[self.args._private_index ]);
+            for (1..self.arg_count, &ast.extra.items[self.args._private_index + 1]) |_, arg| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, arg.*);
+            }
+        }
+        fmt.unsafe_cstr_ptr(")");
+    }
 }
 
 pub struct NativeExpr {
     type: AstNodeType;
     arg_count: u16;
     span: SpanIndex;
-    operand: SpanIndex;
-    arg_index: AstExtraIndex; // list of AstNodeIndex (expr)
+    name: Symbol;
+    args: AstExtraIndex; // list of AstNodeIndex (expr)
+
+    pub fn new(span: SpanIndex, name: Symbol, arg_count: u16, args: AstExtraIndex) NativeExpr {
+        var self: NativeExpr = undefined;
+        self.type = AstNodeType::NativeExpr;
+        self.arg_count = arg_count;
+        self.span = span;
+        self.name = name;
+        self.args = args;
+        return self;
+    }
+
+    pub fn fmt(self: *const NativeExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        fmt.slice(ast.interner.get(self.name));
+        fmt.unsafe_cstr_ptr("(");
+        if (self.arg_count > 1) {
+            ast.display_node(fmt, ast.extra.items[self.args._private_index ]);
+            for (1..self.arg_count, &ast.extra.items[self.args._private_index + 1]) |_, arg| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, arg.*);
+            }
+        }
+        fmt.unsafe_cstr_ptr(")");
+    }
 }
 
 pub struct LambdaExpr {
     type: AstNodeType;
     param_count: u16;
     span: SpanIndex;
-    return_type: OptionalAstNodeIndex;
-    param_index: AstExtraIndex; // list of Parameter
-    // body: AstNodeIndex (always +1);
+    ret_type: OptionalAstNodeIndex;
+    params: AstExtraIndex; // list of `Parameter`
+    body: AstNodeIndex;
+
+    pub fn new(
+        span: SpanIndex,
+        param_count: u16,
+        ret_type: OptionalAstNodeIndex,
+        params: AstExtraIndex,
+        body: AstNodeIndex,
+    ) LambdaExpr {
+        var self: LambdaExpr = undefined;
+        self.type = AstNodeType::LambdaExpr;
+        self.param_count = param_count;
+        self.span = span;
+        self.ret_type = ret_type;
+        self.params = params;
+        self.body = body;
+    }
+
+    pub fn fmt(self: *const LambdaExpr, fmt: *Formatter, ast: *const Ast) void {
+        fmt.unsafe_cstr_ptr("|");
+        if (self.param_count > 1) {
+            const first_param = &ast.extra.items[self.params._private_index] as *Parameter;
+            ast.display_node(fmt, first_param.pattern._private_index);
+            fmt.unsafe_cstr_ptr(": ");
+            ast.display_node(fmt, first_param.ty._private_index);
+            for (1..self.param_count, &ast.extra.items[self.params._private_index + 1]) |_, param| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, (first_param as *Parameter).pattern._private_index);
+                fmt.unsafe_cstr_ptr(": ");
+                ast.display_node(fmt, (param as *Parameter).ty._private_index);
+            }
+        }
+        fmt.unsafe_cstr_ptr("| ");
+        if (self.ret_type.is_some()) {
+            fmt.unsafe_cstr_ptr("-> ");
+            ast.display_node(fmt, self.ret_type._private_index);
+            fmt.unsafe_cstr_ptr(" ");
+        }
+        ast.display_node(fmt, self.body._private_index);
+    }
 }
 
 pub struct ArrayExpr {
@@ -67,8 +238,34 @@ pub struct ArrayExpr {
     len_upper: u16;
     span: SpanIndex;
     len_lower: u32;
-    child_index: AstExtraIndex; // list of AstNode (expr)
-    // child_type: AstNodeIndex (always +1);
+    // ty: AstNodeIndex (always +1);
+    entries: AstExtraIndex; // list of AstNode (expr)
+
+    pub fn new(span: SpanIndex, len: u64, entries: AstExtraIndex) ArrayExpr {
+        var self: ArrayExpr = undefined;
+        self.type = AstNodeType::ArrayExpr;
+        self.len_upper = (len >> 32) as u16;
+        self.span = span;
+        self.len_lower = len as u32;
+        self.entries = entries;
+        return self;
+    }
+
+    pub fn fmt(self: *const ArrayExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        fmt.unsafe_cstr_ptr("[");
+        fmt.unsafe_cstr_ptr("]");
+        ast.display_next_node(fmt, index, @sizeof(self.*));
+        fmt.unsafe_cstr_ptr("{");
+        const len = (self.len_upper << 32 | self.len_lower) as u64;
+        if (len > 1) {
+            ast.display_node(fmt, ast.extra.items[self.entries._private_index ]);
+            for (1..len, &ast.extra.items[self.entries._private_index + 1]) |_, entry| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, entry.*);
+            }
+        }
+        fmt.unsafe_cstr_ptr("}");
+    }
 }
 
 // Also includes unions
@@ -76,26 +273,88 @@ pub struct StructExpr {
     type: AstNodeType;
     field_count: u16;
     span: SpanIndex;
-    field_index: AstExtraIndex; // list of StructExprField
-    // struct_type: AstNodeIndex (always +1);
+    // struct_type: AstNodeIndex (always +1); // type
+    fields: AstExtraIndex; // list of StructExprField
+
+    pub fn new(span: SpanIndex, field_count: u16, fields: AstExtraIndex) StructExpr {
+        var self: StructExpr = undefined;
+        self.type = AstNodeType::StructExpr;
+        self.field_count = field_count;
+        self.span = span;
+        self.fields = fields;
+        return self;
+    }
+
+    pub fn fmt(self: *const StructExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        ast.display_next_node(fmt, index, @sizeof(self.*));
+        fmt.unsafe_cstr_ptr(" {");
+        if (self.field_count > 1) {
+            const first_field = &ast.extra.items[self.fields._private_index] as *StructExprField;
+            fmt.slice(ast.interner.get(first_field.sym));
+            fmt.unsafe_cstr_ptr(": ");
+            ast.display_node(fmt, first_field.expr._private_index);
+            for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
+                fmt.unsafe_cstr_ptr(", ");
+                fmt.slice(ast.interner.get((field as *StructExprField).sym));
+                fmt.unsafe_cstr_ptr(": ");
+                ast.display_node(fmt, (field as *StructExprField).expr._private_index);
+            }
+        }
+        fmt.unsafe_cstr_ptr("}");
+    }
 }
 
 pub struct TupleExpr {
     type: AstNodeType;
     field_count: u16;
     span: SpanIndex;
-    field_index: AstExtraIndex; // list of AstNode (Expr)
+    fields: AstExtraIndex; // list of AstNode (Expr)
+
+    pub fn new(span: SpanIndex, field_count: u16, fields: AstExtraIndex) TupleExpr {
+        var self: TupleExpr = undefined;
+        self.type = AstNodeType::TupleExpr;
+        self.field_count = field_count;
+        self.span = span;
+        self.fields = fields;
+        return self;
+    }
+
+    pub fn fmt(self: *const TupleExpr, fmt: *Formatter, ast: *const Ast) void {
+        fmt.unsafe_cstr_ptr("(");
+        if (self.field_count > 1) {
+            ast.display_node(fmt, ast.extra.items[self.fields._private_index]);
+            for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, field.*);
+            }
+        }
+        fmt.unsafe_cstr_ptr(")");
+    }
 }
 
 pub struct PrimativeExpr {
     type: AstNodeType;
     prim: PrimativeType;
     span: SpanIndex;
+    sym: Symbol;
+
+    pub fn new(span: SpanIndex, prim: PrimativeType, sym: Symbol) PrimativeExpr {
+        var self: PrimativeExpr = undefined;
+        self.type = AstNodeType::PrimativeExpr;
+        self.prim = prim;
+        self.span = span;
+        self.sym = sym;
+        return self;
+    }
+
+    pub fn fmt(self: *const PrimativeExpr, fmt: *Formatter, ast: *const Ast) void {
+        fmt.slice(ast.interner.get(self.sym));
+    }
 }
 
 pub struct StructExprField {
-    ident_sym: Symbol;
-    ident_span: SpanIndex;
+    span: SpanIndex;
+    sym: Symbol;
     expr: AstNodeIndex;
 }
 
@@ -125,6 +384,7 @@ pub enum BinaryOp {
     FactorDiv,
     FactorRem,
     // trailing expr
+    Conversion,
     Index,
     Field,
 }

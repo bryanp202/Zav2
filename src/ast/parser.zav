@@ -465,14 +465,16 @@ pub struct Parser {
 
             const name = self.prev;
             if (self.match(TokenType::LeftSquare)) {
+                const generic_index = self.reserve_node(@sizeof(0 as ast::ty::GenericType));
+                edefer self.unreserve_node(generic_index);
+
                 const generic_node = self.parse_generic_type(name);
                 if (generic_node.is_err()) {
                     ereturn Result::[AstNodeIndex, void]::Err(0 as void);
                 }
-                const generic_index = self.store_node(&generic_node.unwrap_ok() as *u32, @sizeof(0 as ast::ty::GenericType));
+                self.set_node(generic_index, &generic_node.unwrap_ok() as *u32);
                 self.scratch.push(generic_index._private_index);
             } else {
-                @printf("name.start %llu, curr.start %llu", name.lexeme.ptr, self.curr.lexeme.ptr);
                 const ident_node = ast::ty::IdentType::new(
                     self.store_span_since(name),
                     self.ast.interner.intern(name.lexeme),
