@@ -17,7 +17,7 @@ pub fn main(argc: i64, argv: **u8) i64 {
 
     const interner = ast::symbol::SymbolInterner::new();
     defer interner.free();
-    const result = ast::parser::Parser::parse(std::path::PathBuf::from_cstr(settings.root_path), interner.clone());
+    const result = ast::parser::Parser::parse(interner.clone(), std::path::PathBuf::from_cstr(settings.root_path));
     if (result.is_err()) {
         @printf("IoError: %d\n", result.unwrap_err());
         return 1;

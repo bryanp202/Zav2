@@ -397,7 +397,9 @@ pub enum ErrorType {
     InvalidExpr,
     InvalidNative,
     InvalidScientificNotation,
+    InvalidScope,
     InvalidType,
+    UnclosedDelimiter,
     UnterminatedBlockComment,
     UnterminatedStringLiteral,
     UnexpectedSymbol,
@@ -414,7 +416,9 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
         ErrorType::InvalidExpr => msg = "invalid expression";
         ErrorType::InvalidNative => msg = "native must start with an alpha character";
         ErrorType::InvalidScientificNotation => msg = "invalid floating point scientific notation";
+        ErrorType::InvalidScope => msg = "invalid scope";
         ErrorType::InvalidType => msg = "invalid type";
+        ErrorType::UnclosedDelimiter => msg = "unclosed delimiter";
         ErrorType::UnterminatedBlockComment => msg = "unterminated block comment";
         ErrorType::UnterminatedStringLiteral => msg = "unterminated string literal";
         ErrorType::UnexpectedSymbol => msg = "unexpected symbol";

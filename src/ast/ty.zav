@@ -207,3 +207,91 @@ pub struct TupleType {
         fmt.unsafe_cstr_ptr(")");
     }
 }
+
+pub struct IdentType {
+    type: AstNodeType;
+    pad: u16;
+    span: SpanIndex;
+    sym: Symbol;
+
+    pub fn new(span: SpanIndex, sym: Symbol) IdentType {
+        var self: IdentType = undefined;
+        self.type = AstNodeType::IdentType;
+        self.pad = 0 as u16;
+        self.span = span;
+        self.sym = sym;
+        return self;
+    }
+
+    pub fn fmt(self: *const IdentType, fmt: *Formatter, ast: *const Ast) void {
+        fmt.slice(ast.interner.get(self.sym));
+    }
+}
+
+pub struct GenericType {
+    type: AstNodeType;
+    generic_count: u16;
+    span: SpanIndex;
+    sym: Symbol;
+    generics: AstExtraIndex;
+
+    pub fn new(
+        span: SpanIndex,
+        sym: Symbol,
+        generic_count: u16,
+        generics: AstExtraIndex,
+    ) GenericType {
+        var self: GenericType = undefined;
+        self.type = AstNodeType::GenericType;
+        self.generic_count = generic_count;
+        self.span = span;
+        self.sym = sym;
+        self.generics = generics;
+        return self;
+    }
+
+    pub fn fmt(self: *const GenericType, fmt: *Formatter, ast: *const Ast) void {
+        fmt.slice(ast.interner.get(self.sym));
+        fmt.unsafe_cstr_ptr("[");
+        if (self.generic_count >= 1) {
+            ast.display_node(fmt, ast.extra.items[self.generics._private_index]);
+            for (1..self.generic_count, &ast.extra.items[self.generics._private_index + 1]) |_, generic| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, generic.*);
+            }
+        }
+        fmt.unsafe_cstr_ptr("]");
+    }
+}
+
+// Size must be >= size of `GenericType`
+pub struct ScopedType {
+    type: AstNodeType;
+    absolute: bool;
+    scope_count: u8; // at least 1
+    span: SpanIndex;
+    scopes: AstExtraIndex; // IdentType or GenericType
+    pad: u32; // make size same as `GenericType`
+
+    pub fn new(span: SpanIndex, absolute: bool, scope_count: u8, scopes: AstExtraIndex) ScopedType {
+        var self: ScopedType = undefined;
+        self.type = AstNodeType::ScopedType;
+        self.absolute = absolute;
+        self.scope_count = scope_count;
+        self.span = span;
+        self.scopes = scopes;
+        self.pad = 0 as u32;
+        return self;
+    }
+
+    pub fn fmt(self: *const ScopedType, fmt: *Formatter, ast: *const Ast) void {
+        if (self.absolute) {
+            fmt.unsafe_cstr_ptr("::");
+        }
+        ast.display_node(fmt, ast.extra.items[self.scopes._private_index]);
+        for (1..self.scope_count, &ast.extra.items[self.scopes._private_index + 1]) |_, type| {
+            fmt.unsafe_cstr_ptr("::");
+            ast.display_node(fmt, type.*);   
+        }
+    }
+}

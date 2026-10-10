@@ -14,6 +14,7 @@ use ::std::fmt::Formatter;
 use ::std::collections::list::List;
 
 use symbol::Symbol;
+use symbol::SymbolInterner;
 
 pub struct UnresolvedModule {
     path: PathBuf;
@@ -35,12 +36,14 @@ pub struct UnresolvedModule {
 }
 
 pub struct Ast {
+    interner: SymbolInterner;
     nodes: List[u32];
     extra: List[u32];
     spans: List[Span];
 
-    pub fn new() Ast {
+    pub fn new(interner: SymbolInterner) Ast {
         var self: Ast = undefined;
+        self.interner = interner;
         self.nodes = List::[u32]::new();
         self.extra = List::[u32]::new();
         self.spans = List::[Span]::new();
@@ -78,6 +81,9 @@ pub struct Ast {
             AstNodeType::ArrayType => (node as *ty::ArrayType).fmt(fmt, self, index);
             AstNodeType::FnType => (node as *ty::FnType).fmt(fmt, self);
             AstNodeType::TupleType => (node as *ty::TupleType).fmt(fmt, self);
+            AstNodeType::IdentType => (node as *ty::IdentType).fmt(fmt, self);
+            AstNodeType::GenericType => (node as *ty::GenericType).fmt(fmt, self);
+            AstNodeType::ScopedType => (node as *ty::ScopedType).fmt(fmt, self);
             else => @abort("unsupported node type: %llu\n", type);
         }
     }
@@ -110,6 +116,12 @@ pub struct Span {
 pub struct AstNodeIndex {
     _private_index: u32;
 
+    pub fn as_optional(self: *const AstNodeIndex) OptionalAstNodeIndex {
+        var optional: OptionalAstNodeIndex = undefined;
+        optional._private_index = self._private_index;
+        return optional;
+    }
+
     overload== (self: AstNodeIndex, other: AstNodeIndex) bool {
         return self._private_index == other._private_index;
     }
@@ -119,8 +131,20 @@ pub struct AstNodeIndex {
 pub struct OptionalAstNodeIndex {
     _private_index: u32;
 
-    fn is_some(self: *const OptionalAstNodeIndex) bool {
-        return self._private_index == 4294967295;
+    pub fn None() OptionalAstNodeIndex {
+        var self: OptionalAstNodeIndex = undefined;
+        self._private_index = 4294967295 as u32;
+        return self;
+    }
+
+    pub fn is_some(self: *const OptionalAstNodeIndex) bool {
+        return self._private_index != 4294967295 as u32;
+    }
+
+    pub fn unwrap(self: *const OptionalAstNodeIndex) AstNodeIndex {
+        var index: AstNodeIndex = undefined;
+        index._private_index = self._private_index;
+        return index;
     }
 
     overload== (self: OptionalAstNodeIndex, other: OptionalAstNodeIndex) bool {
@@ -140,8 +164,8 @@ pub struct SpanIndex {
 pub struct OptionalSpanIndex {
     _private_index: u32;
 
-    fn is_some(self: *const OptionalSpanIndex) bool {
-        return self._private_index == 4294967295;
+    pub fn is_some(self: *const OptionalSpanIndex) bool {
+        return self._private_index != 4294967295;
     }
 
     overload== (self: OptionalSpanIndex, other: OptionalSpanIndex) bool {
@@ -167,24 +191,6 @@ pub struct Parameter {
     ty: AstNodeIndex;
 }
 
-pub struct IdentNode {
-    type: AstNodeType;
-    generic_count: u8;
-    sym: Symbol;
-    span: SpanIndex;
-    generics: AstExtraIndex; // AstNodeIndex (types)
-}
-
-// degrades into a "null" terminated list if no generics
-pub struct ScopeNode {
-    type: AstNodeIndex;
-    absolute: bool;
-    generic_count: u8;
-    ident_sym: Symbol;
-    ident_span: SpanIndex;
-    // next: AstNodeIndex (always +1);
-}
-
 pub struct AstPoison {
     type: AstNodeType;
     span: SpanIndex;
@@ -194,6 +200,10 @@ pub struct AstPoison {
         self.type = AstNodeType::Poison;
         self.span = span;
         return self;
+    }
+
+    pub fn fmt(self: *const AstPoison, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("@poison");
     }
 }
 
@@ -254,7 +264,8 @@ pub enum AstNodeType {
     FnType,
     TupleType,
     IdentType,
-    ScopedIdentType,
+    GenericType,
+    ScopedType,
 
     /* patterns */
     PatternDestruct,
