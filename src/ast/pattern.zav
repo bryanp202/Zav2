@@ -1,3 +1,6 @@
+use ::std::fmt::Formatter;
+
+use super::Ast;
 use super::AstNodeType;
 use super::AstNodeIndex;
 use super::OptionalAstNodeIndex;
@@ -7,25 +10,103 @@ use super::symbol::Symbol;
 
 pub struct IdentPattern {
     type: AstNodeType;
-    sym: Symbol;
+    pad: u16;
     span: SpanIndex;
+    sym: Symbol;
+
+    pub fn new(span: SpanIndex, sym: Symbol) IdentPattern {
+        var self: IdentPattern = undefined;
+        self.type = AstNodeType::IdentPattern;
+        self.pad = 0 as u16;
+        self.span = span;
+        self.sym = sym;
+        return self;
+    }
+
+    pub fn fmt(self: *const IdentPattern, fmt: *Formatter, ast: *const Ast) void {
+        fmt.slice(ast.interner.get(self.sym));
+    }
 }
 
 pub struct DestructPattern {
     type: AstNodeType;
     ignore_rest: bool;
-    field_count: u16;
-    field_index: AstExtraIndex; // list of DestructPatternField
+    field_count: u8;
+    span: SpanIndex;
+    fields: AstExtraIndex; // list of DestructPatternField
+
+    pub fn new(span: SpanIndex, ignore_rest: bool, field_count: u8, fields: AstExtraIndex) DestructPattern {
+        var self: DestructPattern = undefined;
+        self.type = AstNodeType::DestructPattern;
+        self.ignore_rest = ignore_rest;
+        self.field_count = field_count;
+        self.span = span;
+        self.fields = fields;
+        return self;
+    }
+
+    pub fn fmt(self: *const DestructPattern, fmt: *Formatter, ast: *const Ast) void {
+        fmt.unsafe_cstr_ptr("{ ");
+        if (self.field_count > 1) {
+            const first_field = &ast.extra.items[self.fields._private_index] as *DestructPatternField;
+            first_field.fmt(fmt, ast);
+            for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
+                fmt.unsafe_cstr_ptr(", ");
+                (field as *DestructPatternField).fmt(fmt, ast);
+            }
+            if (self.ignore_rest) fmt.unsafe_cstr_ptr(", ..");
+        } else if (self.ignore_rest) fmt.unsafe_cstr_ptr("..");
+        fmt.unsafe_cstr_ptr(" }");
+    }
 }
 
 pub struct TuplePattern {
     type: AstNodeType;
-    field_count: u16;
-    field_index: AstExtraIndex; // list of patterns
+    field_count: u8;
+    pad: u8;
+    span: SpanIndex;
+    fields: AstExtraIndex; // list of patterns
+
+    pub fn new(span: SpanIndex, field_count: u8, fields: AstExtraIndex) TuplePattern {
+        var self: TuplePattern = undefined;
+        self.field_count = field_count;
+        self.pad = 0 as u8;
+        self.span = span;
+        self.fields = fields;
+        return self;
+    }
+
+    pub fn fmt(self: *const TuplePattern, fmt: *Formatter, ast: *const Ast) void {
+        fmt.unsafe_cstr_ptr("(");
+        if (self.field_count > 1) {
+            ast.display_node(fmt, ast.extra.items[self.fields._private_index]);
+            for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, field.*);
+            }
+        }
+        fmt.unsafe_cstr_ptr(")");
+    }
 }
 
 pub struct DestructPatternField {
-    field_sym: Symbol;
-    field_span: SpanIndex;
-    rename_pattern: OptionalAstNodeIndex; // index from original pattern
+    span: SpanIndex;
+    sym: Symbol;
+    rename_pattern: OptionalAstNodeIndex;
+
+    pub fn new(span: SpanIndex, sym: Symbol, rename_pattern: OptionalAstNodeIndex) DestructPatternField {
+        var self: DestructPatternField = undefined;
+        self.span = span;
+        self.sym = sym;
+        self.rename_pattern = rename_pattern;
+        return self;
+    }
+
+    pub fn fmt(self: *const DestructPatternField, fmt: *Formatter, ast: *const Ast) void {
+        fmt.slice(ast.interner.get(self.sym));
+        if (self.rename_pattern.is_some()) {
+            fmt.unsafe_cstr_ptr(": ");
+            ast.display_node(fmt, self.rename_pattern._private_index);
+        }
+    }
 }

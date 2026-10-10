@@ -181,14 +181,22 @@ pub struct AstExtraIndex {
     }
 }
 
-pub struct Identifier {
-    sym: Symbol;
-    span: SpanIndex;
-}
-
 pub struct Parameter {
     pattern: AstNodeIndex;
     ty: AstNodeIndex;
+
+    pub fn new(pattern: AstNodeIndex, ty: AstNodeIndex) Parameter {
+        var self: Parameter = undefined;
+        self.pattern = pattern;
+        self.ty = ty;
+        return self;
+    }
+
+    pub fn fmt(self: *const Parameter, fmt: *Formatter, ast: *const Ast) void {
+        ast.display_node(fmt, self.pattern._private_index);
+        fmt.unsafe_cstr_ptr(": ");
+         ast.display_node(fmt, self.ty._private_index);
+    }
 }
 
 pub struct AstPoison {
@@ -267,9 +275,9 @@ pub enum AstNodeType {
     ScopedType,
 
     /* patterns */
-    PatternDestruct,
+    IdentPattern,
+    DestructPattern,
     PatternTuple,
-    PatternIdent,
 
     /* shared */
     ScopedIdentifier,

@@ -213,14 +213,10 @@ pub struct LambdaExpr {
         fmt.unsafe_cstr_ptr("|");
         if (self.param_count > 1) {
             const first_param = &ast.extra.items[self.params._private_index] as *Parameter;
-            ast.display_node(fmt, first_param.pattern._private_index);
-            fmt.unsafe_cstr_ptr(": ");
-            ast.display_node(fmt, first_param.ty._private_index);
+            first_param.fmt(fmt, ast);
             for (1..self.param_count, &ast.extra.items[self.params._private_index + 1]) |_, param| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, (first_param as *Parameter).pattern._private_index);
-                fmt.unsafe_cstr_ptr(": ");
-                ast.display_node(fmt, (param as *Parameter).ty._private_index);
+                (param as *Parameter).fmt(fmt, ast);
             }
         }
         fmt.unsafe_cstr_ptr("| ");
@@ -289,15 +285,11 @@ pub struct StructExpr {
         ast.display_next_node(fmt, index, @sizeof(self.*));
         fmt.unsafe_cstr_ptr(" {");
         if (self.field_count > 1) {
-            const first_field = &ast.extra.items[self.fields._private_index] as *StructExprField;
-            fmt.slice(ast.interner.get(first_field.sym));
-            fmt.unsafe_cstr_ptr(": ");
-            ast.display_node(fmt, first_field.expr._private_index);
+            const first_field = &ast.extra.items[self.fields._private_index];
+            (first_field as *StructExprField).fmt(fmt, ast);
             for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
                 fmt.unsafe_cstr_ptr(", ");
-                fmt.slice(ast.interner.get((field as *StructExprField).sym));
-                fmt.unsafe_cstr_ptr(": ");
-                ast.display_node(fmt, (field as *StructExprField).expr._private_index);
+                (field as *StructExprField).fmt(fmt, ast);
             }
         }
         fmt.unsafe_cstr_ptr("}");
@@ -356,6 +348,20 @@ pub struct StructExprField {
     span: SpanIndex;
     sym: Symbol;
     expr: AstNodeIndex;
+
+    pub fn new(span: SpanIndex, sym: Symbol, expr: AstNodeIndex) StructExprField {
+        var self: StructExprField = undefined;
+        self.span = span;
+        self.sym = sym;
+        self.expr = expr;
+        return self;
+    }
+
+    pub fn fmt(self: *const StructExprField, fmt: *Formatter, ast: *const Ast) void {
+        fmt.slice(ast.interner.get(self.sym));
+        fmt.unsafe_cstr_ptr(": ");
+        ast.display_node(fmt, self.expr._private_index);
+    }
 }
 
 pub enum BinaryOp {
