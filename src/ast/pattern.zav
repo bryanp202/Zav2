@@ -69,6 +69,7 @@ pub struct TuplePattern {
 
     pub fn new(span: SpanIndex, field_count: u8, fields: AstExtraIndex) TuplePattern {
         var self: TuplePattern = undefined;
+        self.type = AstNodeType::TuplePattern;
         self.field_count = field_count;
         self.pad = 0 as u8;
         self.span = span;

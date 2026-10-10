@@ -171,7 +171,7 @@ pub struct NativeExpr {
         return self;
     }
 
-    pub fn fmt(self: *const NativeExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+    pub fn fmt(self: *const NativeExpr, fmt: *Formatter, ast: *const Ast) void {
         fmt.slice(ast.interner.get(self.name));
         fmt.unsafe_cstr_ptr("(");
         if (self.arg_count > 1) {
@@ -341,6 +341,94 @@ pub struct PrimativeExpr {
 
     pub fn fmt(self: *const PrimativeExpr, fmt: *Formatter, ast: *const Ast) void {
         fmt.slice(ast.interner.get(self.sym));
+    }
+}
+
+pub struct IdentExpr {
+    type: AstNodeType;
+    pad: u16;
+    span: SpanIndex;
+    sym: Symbol;
+
+    pub fn new(span: SpanIndex, sym: Symbol) IdentExpr {
+        var self: IdentExpr = undefined;
+        self.type = AstNodeType::IdentExpr;
+        self.pad = 0 as u16;
+        self.span = span;
+        self.sym = sym;
+        return self;
+    }
+
+    pub fn fmt(self: *const IdentExpr, fmt: *Formatter, ast: *const Ast) void {
+        fmt.slice(ast.interner.get(self.sym));
+    }
+}
+
+pub struct GenericExpr {
+    type: AstNodeType;
+    generic_count: u16;
+    span: SpanIndex;
+    sym: Symbol;
+    generics: AstExtraIndex; // list of types
+
+    pub fn new(
+        span: SpanIndex,
+        sym: Symbol,
+        generic_count: u16,
+        generics: AstExtraIndex,
+    ) GenericExpr {
+        var self: GenericExpr = undefined;
+        self.type = AstNodeType::GenericExpr;
+        self.generic_count = generic_count;
+        self.span = span;
+        self.sym = sym;
+        self.generics = generics;
+        return self;
+    }
+
+    pub fn fmt(self: *const GenericExpr, fmt: *Formatter, ast: *const Ast) void {
+        fmt.slice(ast.interner.get(self.sym));
+        fmt.unsafe_cstr_ptr("::[");
+        if (self.generic_count >= 1) {
+            ast.display_node(fmt, ast.extra.items[self.generics._private_index]);
+            for (1..self.generic_count, &ast.extra.items[self.generics._private_index + 1]) |_, generic| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, generic.*);
+            }
+        }
+        fmt.unsafe_cstr_ptr("]");
+    }
+}
+
+// Size must be >= size of `GenericExpr`
+pub struct ScopedExpr {
+    type: AstNodeType;
+    absolute: bool;
+    scope_count: u8; // at least 1
+    span: SpanIndex;
+    scopes: AstExtraIndex; // IdentExpr or GenericExpr
+    pad: u32; // make size same as `GenericExpr`
+
+    pub fn new(span: SpanIndex, absolute: bool, scope_count: u8, scopes: AstExtraIndex) ScopedExpr {
+        var self: ScopedExpr = undefined;
+        self.type = AstNodeType::ScopedExpr;
+        self.absolute = absolute;
+        self.scope_count = scope_count;
+        self.span = span;
+        self.scopes = scopes;
+        self.pad = 0 as u32;
+        return self;
+    }
+
+    pub fn fmt(self: *const ScopedExpr, fmt: *Formatter, ast: *const Ast) void {
+        if (self.absolute) {
+            fmt.unsafe_cstr_ptr("::");
+        }
+        ast.display_node(fmt, ast.extra.items[self.scopes._private_index]);
+        for (1..self.scope_count, &ast.extra.items[self.scopes._private_index + 1]) |_, type| {
+            fmt.unsafe_cstr_ptr("::");
+            ast.display_node(fmt, type.*);   
+        }
     }
 }
 

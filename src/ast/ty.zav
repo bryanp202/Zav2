@@ -233,7 +233,7 @@ pub struct GenericType {
     generic_count: u16;
     span: SpanIndex;
     sym: Symbol;
-    generics: AstExtraIndex;
+    generics: AstExtraIndex; // list of types
 
     pub fn new(
         span: SpanIndex,

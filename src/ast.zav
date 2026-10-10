@@ -72,6 +72,7 @@ pub struct Ast {
         const node = &self.nodes.items[index];
         const type = node.* as AstNodeType;
         switch (type) {
+            // type
             AstNodeType::VoidType => fmt.unsafe_cstr_ptr("void");
             AstNodeType::BoolType => fmt.unsafe_cstr_ptr("bool");
             AstNodeType::IntType => (node as *ty::IntType).fmt(fmt);
@@ -84,6 +85,26 @@ pub struct Ast {
             AstNodeType::IdentType => (node as *ty::IdentType).fmt(fmt, self);
             AstNodeType::GenericType => (node as *ty::GenericType).fmt(fmt, self);
             AstNodeType::ScopedType => (node as *ty::ScopedType).fmt(fmt, self);
+            // pattern
+            AstNodeType::IdentPattern => (node as *pattern::IdentPattern).fmt(fmt, self);
+            AstNodeType::DestructPattern => (node as *pattern::DestructPattern).fmt(fmt, self);
+            AstNodeType::TuplePattern => (node as *pattern::TuplePattern).fmt(fmt, self);
+            // expr
+            AstNodeType::IfExpr => (node as *expr::IfExpr).fmt(fmt, self, index);
+            AstNodeType::BinaryExpr => (node as *expr::BinaryExpr).fmt(fmt, self, index);
+            AstNodeType::UnaryExpr => (node as *expr::UnaryExpr).fmt(fmt, self, index);
+            AstNodeType::CallExpr => (node as *expr::CallExpr).fmt(fmt, self, index);
+            AstNodeType::NativeExpr => (node as *expr::NativeExpr).fmt(fmt, self);
+            AstNodeType::LambdaExpr => (node as *expr::LambdaExpr).fmt(fmt, self);
+            AstNodeType::ArrayExpr => (node as *expr::ArrayExpr).fmt(fmt, self, index);
+            AstNodeType::StructExpr => (node as *expr::StructExpr).fmt(fmt, self, index);
+            AstNodeType::TupleExpr => (node as *expr::TupleExpr).fmt(fmt, self);
+            AstNodeType::PrimativeExpr => (node as *expr::PrimativeExpr).fmt(fmt, self);
+            AstNodeType::IdentExpr => (node as *expr::IdentExpr).fmt(fmt, self);
+            AstNodeType::GenericExpr => (node as *expr::GenericExpr).fmt(fmt, self);
+            AstNodeType::ScopedExpr => (node as *expr::ScopedExpr).fmt(fmt, self);
+            // other
+            AstNodeType::Poison => (node as *AstPoison).fmt(fmt);
             else => @abort("unsupported node type: %llu\n", type);
         }
     }
@@ -211,7 +232,7 @@ pub struct AstPoison {
     }
 
     pub fn fmt(self: *const AstPoison, fmt: *Formatter) void {
-        fmt.unsafe_cstr_ptr("@poison");
+        fmt.unsafe_cstr_ptr("#poison#");
     }
 }
 
@@ -256,9 +277,10 @@ pub enum AstNodeType {
     ArrayExpr,
     StructExpr,
     TupleExpr,
-    IdentExpr,
-    ScopeExpr,
     PrimativeExpr,
+    IdentExpr,
+    GenericExpr,
+    ScopedExpr,
 
     /* types */
     VoidType,
@@ -277,7 +299,7 @@ pub enum AstNodeType {
     /* patterns */
     IdentPattern,
     DestructPattern,
-    PatternTuple,
+    TuplePattern,
 
     /* shared */
     ScopedIdentifier,
