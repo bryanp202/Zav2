@@ -1,4 +1,6 @@
-use ::std::option::Option;
+//! Unsafe to have implicit expr in node.
+//! No gaurantee that parent node comes first.
+
 use ::std::fmt::Formatter;
 
 use super::Ast;
@@ -15,22 +17,23 @@ pub struct IfExpr {
     type: AstNodeType;
     pad: u16;
     span: SpanIndex;
-    // cond: AstNodeIndex (always +1);
+    cond: AstNodeIndex;
     then_branch: AstNodeIndex;
     else_branch: AstNodeIndex;
 
-    pub fn new(span: SpanIndex, then_branch: AstNodeIndex, else_branch: AstNodeIndex) IfExpr {
+    pub fn new(span: SpanIndex, cond: AstNodeIndex, then_branch: AstNodeIndex, else_branch: AstNodeIndex) IfExpr {
         var self: IfExpr = undefined;
         self.type = AstNodeType::IfExpr;
         self.pad = 0 as u16;
         self.span = span;
+        self.cond = cond;
         self.then_branch = then_branch;
         self.else_branch = else_branch;
         return self;
     }
 
-    pub fn fmt(self: *const IfExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
-        ast.display_next_node(fmt, index, @sizeof(self.*));
+    pub fn fmt(self: *const IfExpr, fmt: *Formatter, ast: *const Ast) void {
+        ast.display_node(fmt, self.cond._private_index);
         fmt.unsafe_cstr_ptr("?");
         ast.display_node(fmt, self.then_branch._private_index);
         fmt.unsafe_cstr_ptr(":");
@@ -42,20 +45,21 @@ pub struct BinaryExpr {
     type: AstNodeType;
     op: BinaryOp;
     span: SpanIndex;
-    // lhs: AstNodeIndex (always +1);
+    lhs: AstNodeIndex;
     rhs: AstNodeIndex;
 
-    pub fn new(span: SpanIndex, op: BinaryOp, rhs: AstNodeIndex) BinaryExpr {
+    pub fn new(span: SpanIndex, op: BinaryOp, lhs: AstNodeIndex, rhs: AstNodeIndex) BinaryExpr {
         var self: BinaryExpr = undefined;
         self.type = AstNodeType::BinaryExpr;
         self.op = op;
         self.span = span;
+        self.lhs = lhs;
         self.rhs = rhs;
         return self;
     }
 
-    pub fn fmt(self: *const BinaryExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
-        ast.display_next_node(fmt, index, @sizeof(self.*));
+    pub fn fmt(self: *const BinaryExpr, fmt: *Formatter, ast: *const Ast) void {
+        ast.display_node(fmt, self.lhs._private_index);
         var op: *const u8 = undefined;
         switch (self.op) {
             BinaryOp::LogicalOr => op = "or";
@@ -77,7 +81,9 @@ pub struct BinaryExpr {
             BinaryOp::FactorDiv => op = "/";
             BinaryOp::FactorRem => op = "%";
         }
+        fmt.unsafe_cstr_ptr(" ");
         fmt.unsafe_cstr_ptr(op);
+        fmt.unsafe_cstr_ptr(" ");
         ast.display_node(fmt, self.rhs._private_index);
     }
 }
@@ -87,18 +93,19 @@ pub struct UnaryExpr {
     pad: u16;
     op: UnaryOp;
     span: SpanIndex;
-    // operand: AstNodeIndex (always +1);
+    operand: AstNodeIndex;
 
-    pub fn new(span: SpanIndex, op: UnaryOp) UnaryExpr {
+    pub fn new(span: SpanIndex, op: UnaryOp, operand: AstNodeIndex) UnaryExpr {
         var self: UnaryExpr = undefined;
         self.type = AstNodeType::UnaryExpr;
         self.pad = 0 as u16;
         self.op = op;
         self.span = span;
+        self.operand = operand;
         return self;
     }
 
-    pub fn fmt(self: *const UnaryExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+    pub fn fmt(self: *const UnaryExpr, fmt: *Formatter, ast: *const Ast) void {
         var op: *const u8 = undefined;
         switch (self.op) {
             UnaryOp::Invert => op = "~";
@@ -106,13 +113,13 @@ pub struct UnaryExpr {
             UnaryOp::Bang => op = "!";
             UnaryOp::Ref => op = "&";
             UnaryOp::Deref => {
-                ast.display_next_node(fmt, index, @sizeof(self.*));
+                ast.display_node(fmt, self.operand._private_index);
                 fmt.unsafe_cstr_ptr(".*");
                 return;
             }
         }
         fmt.unsafe_cstr_ptr(op);
-        ast.display_next_node(fmt, index, @sizeof(self.*));
+        ast.display_node(fmt, self.operand._private_index);
     }
 }
  
@@ -120,24 +127,25 @@ pub struct TrailingExpr {
     type: AstNodeType;
     op: TrailingOp;
     span: SpanIndex;
-    // operand: AstNodeIndex (always +1);
+    operand: AstNodeIndex;
     trailing: AstNodeIndex;
 
-    pub fn new(span: SpanIndex, op: TrailingOp, trailing: AstNodeIndex) TrailingExpr {
+    pub fn new(span: SpanIndex, op: TrailingOp, operand: AstNodeIndex, trailing: AstNodeIndex) TrailingExpr {
         var self: TrailingExpr = undefined;
         self.type = AstNodeType::TrailingExpr;
         self.op = op;
+        self.operand = operand;
         self.trailing = trailing;
         return self;
     }
 
-    pub fn fmt(self: *const TrailingExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
-        ast.display_next_node(fmt, index, @sizeof(self.*));
+    pub fn fmt(self: *const TrailingExpr, fmt: *Formatter, ast: *const Ast) void {
+        ast.display_node(fmt, self.operand._private_index);
         var op: *const u8 = undefined;
         switch (self.op) {
-            TrailingOp::Index => op = ".";
+            TrailingOp::Field => op = ".";
             TrailingOp::Conversion => op = " as ";
-            TrailingOp::Field => {
+            TrailingOp::Index => {
                 fmt.unsafe_cstr_ptr("[");
                 ast.display_node(fmt, self.trailing._private_index);
                 fmt.unsafe_cstr_ptr("]");
@@ -149,24 +157,57 @@ pub struct TrailingExpr {
     }
 }
 
+pub struct TupleIndexExpr {
+    type: AstNodeType;
+    pad: u16;
+    span: SpanIndex;
+    operand: AstNodeIndex;
+    index_span: SpanIndex;
+    index_sym: Symbol;
+
+    pub fn new(
+        span: SpanIndex,
+        operand: AstNodeIndex,
+        index_span: SpanIndex,
+        index_sym: Symbol,
+    ) TupleIndexExpr {
+        var self: TupleIndexExpr = undefined;
+        self.type = AstNodeType::TupleIndexExpr;
+        self.pad = 0 as u16;
+        self.operand = operand;
+        self.index_span = index_span;
+        self.index_sym = index_sym;
+        return self;
+    }
+
+    pub fn fmt(self: *const TupleIndexExpr, fmt: *Formatter, ast: *const Ast) void {
+        ast.display_node(fmt, self.operand._private_index);
+        fmt.unsafe_cstr_ptr("#");
+        fmt.slice(ast.interner.get(self.index_sym));
+    }
+}
+
 pub struct CallExpr {
     type: AstNodeType;
-    arg_count: u16;
+    pad: u8;
+    arg_count: u8;
     span: SpanIndex;
-    // operand: AstNodeIndex (always +1);
+    operand: AstNodeIndex;
     args: AstExtraIndex; // list of AstNodeIndex (expr)
 
-    pub fn new(span: SpanIndex, arg_count: u16, args: AstExtraIndex) CallExpr {
+    pub fn new(span: SpanIndex, arg_count: u8, operand: AstNodeIndex, args: AstExtraIndex) CallExpr {
         var self: CallExpr = undefined;
         self.type = AstNodeType::CallExpr;
+        self.pad = 0 as u8;
         self.arg_count = arg_count;
         self.span = span;
+        self.operand = operand;
         self.args = args;
         return self;
     }
 
-    pub fn fmt(self: *const CallExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
-        ast.display_next_node(fmt, index, @sizeof(self.*));
+    pub fn fmt(self: *const CallExpr, fmt: *Formatter, ast: *const Ast) void {
+        ast.display_node(fmt, self.operand._private_index);
         fmt.unsafe_cstr_ptr("(");
         if (self.arg_count > 0) {
             ast.display_node(fmt, ast.extra.items[self.args._private_index ]);
@@ -181,14 +222,16 @@ pub struct CallExpr {
 
 pub struct NativeExpr {
     type: AstNodeType;
-    arg_count: u16;
+    pad: u8;
+    arg_count: u8;
     span: SpanIndex;
     name: Symbol;
     args: AstExtraIndex; // list of AstNodeIndex (expr)
 
-    pub fn new(span: SpanIndex, name: Symbol, arg_count: u16, args: AstExtraIndex) NativeExpr {
+    pub fn new(span: SpanIndex, name: Symbol, arg_count: u8, args: AstExtraIndex) NativeExpr {
         var self: NativeExpr = undefined;
         self.type = AstNodeType::NativeExpr;
+        self.pad = 0 as u8;
         self.arg_count = arg_count;
         self.span = span;
         self.name = name;
@@ -212,26 +255,29 @@ pub struct NativeExpr {
 
 pub struct LambdaExpr {
     type: AstNodeType;
-    param_count: u16;
+    pad: u8;
+    param_count: u8;
     span: SpanIndex;
     ret_type: OptionalAstNodeIndex;
     params: AstExtraIndex; // list of `Parameter`
-    body: AstNodeIndex;
+    body: AstNodeIndex; // stmt
 
     pub fn new(
         span: SpanIndex,
-        param_count: u16,
+        param_count: u8,
         ret_type: OptionalAstNodeIndex,
         params: AstExtraIndex,
         body: AstNodeIndex,
     ) LambdaExpr {
         var self: LambdaExpr = undefined;
         self.type = AstNodeType::LambdaExpr;
+        self.pad = 0 as u8;
         self.param_count = param_count;
         self.span = span;
         self.ret_type = ret_type;
         self.params = params;
         self.body = body;
+        return self;
     }
 
     pub fn fmt(self: *const LambdaExpr, fmt: *Formatter, ast: *const Ast) void {
@@ -520,9 +566,11 @@ pub enum TrailingOp {
     Conversion,
     Index,
     Field,
+    TupleField,
 }
 
 pub enum PrimativeType {
+    None,
     Nullptr,
     Bool,
     Int,
@@ -533,7 +581,7 @@ pub enum PrimativeType {
 
 pub enum Precedence {
     None,
-    Ternary,
+    If,
     LogicalOr,
     LogicalAnd,
     Equal,
@@ -545,14 +593,14 @@ pub enum Precedence {
     Term,
     Factor,
     Unary,
-    PostFix,
+    Postfix,
     Primary,
 }
 
-pub fn anyfix_precedence(tt: TokenType) Option[Precedence] {
+pub fn anyfix_precedence(tt: TokenType) Precedence {
     var prec: Precedence = undefined;
     switch (tt) {
-        TokenType::QuestionMark => prec = Precedence::Ternary;
+        TokenType::QuestionMark => prec = Precedence::If;
         TokenType::Or => prec = Precedence::LogicalOr;
         TokenType::And => prec = Precedence::LogicalAnd;
         TokenType::EqualEqual | TokenType::BangEqual => prec = Precedence::Equal;
@@ -570,14 +618,67 @@ pub fn anyfix_precedence(tt: TokenType) Option[Precedence] {
         | TokenType::Percent => prec = Precedence::Factor;
         TokenType::LeftParen
         | TokenType::LeftSquare
-        | TokenType::Dot => prec = Precedence::PostFix;
-        else => Option::[Precedence]::None();
+        | TokenType::Dot
+        | TokenType::As
+        | TokenType::NumberSign => prec = Precedence::Postfix;
+        else => prec = Precedence::None;
     }
-    return Option::[Precedence]::Some(prec);
+    return prec;
 }
 
 pub fn precedence_up(prec: Precedence) Precedence {
-    return prec <= Precedence::PostFix
+    return prec <= Precedence::Postfix
         ? (prec as u16 + 1) as Precedence
         : Precedence::Primary;
+}
+
+pub fn tt_to_binary_op(tt: TokenType) BinaryOp {
+    var op: BinaryOp = undefined;
+    switch (tt) {
+        TokenType::Or => op = BinaryOp::LogicalOr;
+        TokenType::And => op = BinaryOp::LogicalAnd;
+        TokenType::EqualEqual => op = BinaryOp::CompareE;
+        TokenType::BangEqual => op = BinaryOp::CompareNE;
+        TokenType::Less => op = BinaryOp::CompareL;
+        TokenType::LessEqual => op = BinaryOp::CompareLE;
+        TokenType::Greater => op = BinaryOp::CompareG;
+        TokenType::GreaterEqual => op = BinaryOp::CompareGE;
+        TokenType::Pipe => op = BinaryOp::BitOr;
+        TokenType::Caret => op = BinaryOp::BitXor;
+        TokenType::Ampersand => op = BinaryOp::BitXor;
+        TokenType::ShiftRight => op = BinaryOp::ShiftR;
+        TokenType::ShiftLeft => op = BinaryOp::ShiftL;
+        TokenType::Plus => op = BinaryOp::TermAdd;
+        TokenType::Minus => op = BinaryOp::TermSub;
+        TokenType::Star => op = BinaryOp::FactorMul;
+        TokenType::Slash => op = BinaryOp::FactorDiv;
+        TokenType::Percent => op = BinaryOp::FactorRem;
+    }
+    return op;
+}
+
+pub fn tt_to_unary_op(tt: TokenType) UnaryOp {
+    var op: UnaryOp = undefined;
+    switch (tt) {
+        TokenType::Minus => op = UnaryOp::Minus;
+        TokenType::Tilde => op = UnaryOp::Invert;
+        TokenType::Ampersand => op = UnaryOp::Ref;
+        TokenType::Bang => op = UnaryOp::Bang;
+        else => @abort("invalid unary op: %llu\n", tt);
+    }
+    return op;
+}
+
+pub fn tt_to_primative(tt: TokenType) PrimativeType {
+    var prim: PrimativeType = undefined;
+    switch (tt) {
+        TokenType::Nullptr => prim = PrimativeType::Nullptr;
+        TokenType::True | TokenType::False => prim = PrimativeType::Bool;
+        TokenType::Integer => prim = PrimativeType::Int;
+        TokenType::Float => prim = PrimativeType::Float;
+        TokenType::Char => prim = PrimativeType::Char;
+        TokenType::String => prim = PrimativeType::Str;
+        else => prim = PrimativeType::None;
+    }
+    return prim;
 }

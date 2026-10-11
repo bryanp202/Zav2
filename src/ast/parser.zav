@@ -110,16 +110,32 @@ pub struct Parser {
     }
 
     fn parse_ast(self: *Parser) ParseResult {
+        const root_index = self.reserve_node(@sizeof(0 as ast::RootNode));
+        var first_node: OptionalAstNodeIndex = undefined;
+
         self.advance();
+        const expr = self.parse_expr();
+        if (expr.is_err()) {
+            self.local_synchronize();
+            first_node = OptionalAstNodeIndex::None();
+        } else {
+            first_node = expr.unwrap_ok().as_optional();
+        }
+        const root_node = ast::RootNode::new(first_node);
+        self.set_node(root_index, &root_node as *u32);
+
         while (!self.at_end()) {
-            const type = self.parse_expr();
-            if (type.is_err()) {
+            const expr = self.parse_expr();
+            if (expr.is_err()) {
                 self.local_synchronize();
             }
         }
 
         var fmt = ::std::fmt::Formatter::new_for_terminal();
         defer fmt.free();
+        fmt.unsafe_cstr_ptr("storage (bytes): ");
+        fmt.uint((self.ast.nodes.len * 4 + self.ast.extra.len * 4 + self.ast.spans.len * 4) as u64);
+        fmt.newline();
         self.ast.nodes.fmt(&fmt);
         fmt.newline();
         self.ast.extra.fmt(&fmt);
@@ -148,6 +164,9 @@ pub struct Parser {
     ///////////////////////
     // Statement Parsing //
     ///////////////////////
+    fn parse_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        @abort("todo");
+    }
 
     ////////////////////////
     // Expression Parsing //
@@ -157,13 +176,16 @@ pub struct Parser {
     }
 
     fn parse_expr_with_precedence(self: *Parser, prec: Precedence) Result[AstNodeIndex, void] {
+        const start = self.curr;
         const expr = self.parse_prefix_expr();
-        if (expr.is_err()) {
-            ereturn expr;
-        }
-        return expr;
-        return self.parse_anyfix_expr(expr.unwrap_ok(), prec);
+        if (expr.is_err()) ereturn expr;
+
+        return self.parse_anyfix_expr(start, expr.unwrap_ok(), prec);
     }
+
+    ////////////////////////
+    // Prefix Expressions //
+    ////////////////////////
 
     fn parse_prefix_expr(self: *Parser) Result[AstNodeIndex, void] {
         const token = self.advance();
@@ -176,41 +198,42 @@ pub struct Parser {
             TokenType::DotParen => return self.parse_tuple_expr(token);
             TokenType::DotBrace => return self.parse_struct_expr(token);
             TokenType::ArrayType => return self.parse_array_expr(token);
+            TokenType::Pipe => return self.parse_lambda_expr(token);
+            TokenType::Native => return self.parse_native_expr(token);
             TokenType::Identifier => return self.parse_ident_expr(token);
             TokenType::Scope => return self.parse_scoped_expr(
                 token,
                 self.reserve_node(@sizeof(0 as expr::ScopedExpr)),
                 OptionalAstNodeIndex::None(),
             );
-            else => return self.parse_primary_expr(token);
+            else => return self.parse_primative_expr(token);
         }
     }
 
-    pub fn parse_unary_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
-        var op: UnaryOp = undefined;
-        switch (token.type) {
-            TokenType::Minus => op = UnaryOp::Minus;
-            TokenType::Tilde => op = UnaryOp::Invert;
-            TokenType::Ampersand => op = UnaryOp::Ref;
-            TokenType::Bang => op = UnaryOp::Bang;
-            else => @abort("invalid unary op: %llu\n", token.type);
-        }
+    fn parse_unary_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const op = ast::expr::tt_to_unary_op(token.type);
         const index = self.reserve_node(@sizeof(0 as expr::UnaryExpr));
         edefer self.unreserve_node(index);
 
         const operand = self.parse_expr_with_precedence(Precedence::Unary);
         if (operand.is_err()) ereturn operand;
 
-        const node = expr::UnaryExpr::new(self.store_span_since(token), op);
+        const node = expr::UnaryExpr::new(self.store_span_since(token), op, operand.unwrap_ok());
         self.set_node(index, &node as *u32);
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    pub fn parse_grouping_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
-        return self.parse_expr();
+    fn parse_grouping_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const expr = self.parse_expr();
+        if (expr.is_err()) ereturn expr;
+
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        return expr;
     }
 
-    pub fn parse_tuple_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+    fn parse_tuple_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
         const index = self.reserve_node(@sizeof(0 as expr::TupleExpr));
         edefer self.unreserve_node(index);
         const field_start = self.start_scratch();
@@ -237,7 +260,7 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    pub fn parse_struct_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+    fn parse_struct_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
         const index = self.reserve_node(@sizeof(0 as expr::StructExpr));
         edefer self.unreserve_node(index);
         const field_start = self.start_scratch();
@@ -278,7 +301,7 @@ pub struct Parser {
         }
 
         const { _0: fields, _1: field_chunks } = self.store_extra(field_start);
-        const field_count = field_chunks / 4 as u32;
+        const field_count = field_chunks / (@sizeof(0 as expr::StructExprField) / 4 as u32);
         if (field_count > 65535) {
             const path_slice = self.path.as_slice();
             @abort("Struct expr field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
@@ -293,7 +316,7 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    pub fn parse_array_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+    fn parse_array_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
         const index = self.reserve_node(@sizeof(0 as expr::ArrayExpr));
         edefer self.unreserve_node(index);
         const entry_start = self.start_scratch();
@@ -331,7 +354,97 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    pub fn parse_ident_expr(self: *Parser, name: Token) Result[AstNodeIndex, void] {
+    fn parse_lambda_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as expr::LambdaExpr));
+        edefer self.unreserve_node(index);
+        const param_start = self.start_scratch();
+        defer self.clear_scratch(param_start);
+
+        while (!self.check(TokenType::Pipe)) {
+            const pattern = self.parse_pattern();
+            if (pattern.is_err()) ereturn pattern;
+
+            if (!self.eat(TokenType::Colon, ErrorType::ExpectedColon)) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+            const type = self.parse_type();
+            if (type.is_err()) ereturn type;
+
+            const param = ast::Parameter::new(pattern.unwrap_ok(), type.unwrap_ok());
+            self.push_scratch_chunks(&param as *u32, @sizeof(param));
+            if (!self.match(TokenType::Comma)) break;
+        }
+        if (!self.eat(TokenType::Pipe, ErrorType::ExpectedPipe))  {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const { _0: params, _1: param_chunks } = self.store_extra(param_start);
+        const param_count = param_chunks / (@sizeof(0 as ast::Parameter) / 4 as u32);
+        if (param_count > 255) {
+            const path_slice = self.path.as_slice();
+            @abort("Generic expr param count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+
+        var ret_type: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::SmallArrow)) {
+            const type = self.parse_type();
+            if (type.is_err()) ereturn type;
+            ret_type = type.unwrap_ok().as_optional();
+        } else {
+            ret_type = OptionalAstNodeIndex::None();
+        }
+        const body = self.match(TokenType::LeftBrace) ? self.parse_stmt() : self.parse_expr();
+        if (body.is_err()) ereturn body;
+
+        const node = expr::LambdaExpr::new(
+            self.store_span_since(token),
+            param_count as u8,
+            ret_type,
+            params,
+            body.unwrap_ok(),
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_native_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as expr::NativeExpr));
+        edefer self.unreserve_node(index);
+        const arg_start = self.start_scratch();
+        defer self.clear_scratch(arg_start);
+
+        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        while (!self.check(TokenType::RightParen)) {
+            const arg = self.parse_expr();
+            if (arg.is_err()) ereturn arg;
+            const arg_index = arg.unwrap_ok();
+
+            self.scratch.push(arg_index._private_index);
+            if (!self.match(TokenType::Comma)) break;
+        }
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen))  {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const { _0: args, _1: arg_count } = self.store_extra(arg_start);
+        if (arg_count > 255) {
+            const path_slice = self.path.as_slice();
+            @abort("Native expr arg count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+
+        const node = expr::NativeExpr::new(
+            self.store_span_since(token),
+            self.ast.interner.intern(token.lexeme),
+            arg_count as u8,
+            args,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_ident_expr(self: *Parser, name: Token) Result[AstNodeIndex, void] {
         if (self.match(TokenType::ScopeSquare)) {
             const index = self.reserve_node(@sizeof(0 as expr::GenericExpr));
             edefer self.unreserve_node(index);
@@ -340,6 +453,7 @@ pub struct Parser {
             if (generic.is_err()) {
                 ereturn Result::[AstNodeIndex, void]::Err(0 as void);
             }
+
             const generic_node = generic.unwrap_ok();
             if (self.match(TokenType::Scope)) {
                 const generic_index = self.store_node(&generic_node as *u32, @sizeof(generic_node));
@@ -362,7 +476,7 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    pub fn parse_generic_expr(self: *Parser, name: Token) Result[expr::GenericExpr, void] {
+    fn parse_generic_expr(self: *Parser, name: Token) Result[expr::GenericExpr, void] {
         const generics_start = self.start_scratch();
         defer self.clear_scratch(generics_start);
 
@@ -371,6 +485,7 @@ pub struct Parser {
             if (generic.is_err()) {
                 ereturn Result::[expr::GenericExpr, void]::Err(0 as void);
             }
+
             const generic_type_index = generic.unwrap_ok();
             self.scratch.push(generic_type_index._private_index);
             if (!self.match(TokenType::Comma)) break;
@@ -454,16 +569,12 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(scope_index); 
     }
 
-    pub fn parse_primary_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
-        var prim: PrimativeType = undefined;
-        switch (token.type) {
-            TokenType::Nullptr => prim = PrimativeType::Nullptr;
-            TokenType::True | TokenType::False => prim = PrimativeType::Bool;
-            TokenType::Integer => prim = PrimativeType::Int;
-            TokenType::Float => prim = PrimativeType::Float;
-            TokenType::Char => prim = PrimativeType::Char;
-            TokenType::String => prim = PrimativeType::Str;
+    fn parse_primative_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const prim = ast::expr::tt_to_primative(token.type);
+        if (prim == PrimativeType::None) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::InvalidExpr));
         }
+
         const node = expr::PrimativeExpr::new(
             self.store_span_since(token),
             prim,
@@ -473,17 +584,358 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
+    ////////////////////////
+    // Anyfix Expressions //
+    ////////////////////////
+
     fn parse_anyfix_expr(
         self: *Parser,
-        prefix_expr: AstNodeIndex,
+        token: Token,
+        expr: AstNodeIndex,
         prec: Precedence,
     ) Result[AstNodeIndex, void] {
-        @abort("todo");
+        var expr = expr;
+        while (true) {
+            const new_prec = ast::expr::anyfix_precedence(self.curr.type);
+            if (new_prec < prec) {
+                return Result::[AstNodeIndex, void]::Ok(expr);
+            }
+            self.advance_unchecked();
+
+            var expr_result: Result[AstNodeIndex, void] = undefined;
+            switch (new_prec) {
+                Precedence::If => expr_result = self.parse_if_expr(token, expr);
+                Precedence::Postfix => expr_result = self.parse_postfix_expr(token, expr);
+                else => expr_result = self.parse_binary_expr(token, expr, new_prec);
+            }
+            if (expr_result.is_err()) ereturn expr_result;
+            expr = expr_result.unwrap_ok();
+        }
+    }
+
+    fn parse_if_expr(self: *Parser, start: Token, cond: AstNodeIndex) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as expr::IfExpr));
+        edefer self.unreserve_node(index);
+        
+        const then_branch = self.parse_expr();
+        if (then_branch.is_err()) ereturn then_branch;
+
+        if (!self.eat(TokenType::Colon, ErrorType::ExpectedColon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const else_branch = self.parse_expr_with_precedence(Precedence::If);
+        if (else_branch.is_err()) ereturn else_branch;
+
+        const node = expr::IfExpr::new(
+            self.store_span_since(start),
+            cond,
+            then_branch.unwrap_ok(),
+            else_branch.unwrap_ok(),
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_binary_expr(self: *Parser, start: Token, lhs: AstNodeIndex, prec: Precedence) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as expr::BinaryExpr));
+        edefer self.unreserve_node(index);
+
+        const op = ast::expr::tt_to_binary_op(self.prev.type);
+        const rhs = self.parse_expr_with_precedence(expr::precedence_up(prec));
+        if (rhs.is_err()) ereturn rhs;
+        
+        const node = expr::BinaryExpr::new(self.store_span_since(start), op, lhs, rhs.unwrap_ok());
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_postfix_expr(self: *Parser, start: Token, operand: AstNodeIndex) Result[AstNodeIndex, void] {
+        switch (self.prev.type) {
+            TokenType::LeftSquare => return self.parse_index_expr(start, operand);
+            TokenType::LeftParen => return self.parse_call_expr(start, operand);
+            TokenType::As => return self.parse_conversion_expr(start, operand);
+            TokenType::NumberSign => return self.parse_tuple_index_expr(start, operand);
+            TokenType::Dot => return self.match(TokenType::Star)
+                ? self.parse_deref_expr(start, operand)
+                : self.parse_field_expr(start, operand);
+            else => @abort("invalid postfix expr: %llu\n", self.prev.type);
+        }
+    }
+
+    fn parse_call_expr(self: *Parser, start: Token, operand: AstNodeIndex) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as expr::CallExpr));
+        edefer self.unreserve_node(index);
+        const arg_start = self.start_scratch();
+        defer self.clear_scratch(arg_start);
+
+        while (!self.check(TokenType::RightParen)) {
+            const arg = self.parse_expr();
+            if (arg.is_err()) ereturn arg;
+            const arg_index = arg.unwrap_ok();
+
+            self.scratch.push(arg_index._private_index);
+            if (!self.match(TokenType::Comma)) break;
+        }
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const { _0: args, _1: arg_count } = self.store_extra(arg_start);
+        if (arg_count > 255) {
+            const path_slice = self.path.as_slice();
+            @abort("Call expr arg count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+        const node = expr::CallExpr::new(self.store_span_since(start), arg_count as u8, operand, args);
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_index_expr(self: *Parser, start: Token, operand: AstNodeIndex) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as expr::TrailingExpr));
+        edefer self.unreserve_node(index);
+
+        const rhs = self.parse_expr();
+        if (rhs.is_err()) ereturn rhs;
+
+        if (!self.eat(TokenType::RightSquare, ErrorType::ExpectedRightSquare)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const node = expr::TrailingExpr::new(
+            self.store_span_since(start),
+            TrailingOp::Index,
+            operand,
+            rhs.unwrap_ok()
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_conversion_expr(self: *Parser, start: Token, operand: AstNodeIndex) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as expr::TrailingExpr));
+        edefer self.unreserve_node(index);
+
+        const type = self.parse_type();
+        if (type.is_err()) ereturn type;
+
+        const node = expr::TrailingExpr::new(
+            self.store_span_since(start),
+            TrailingOp::Conversion,
+            operand,
+            type.unwrap_ok()
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_field_expr(self: *Parser, start: Token, operand: AstNodeIndex) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as expr::TrailingExpr));
+        edefer self.unreserve_node(index);
+
+        if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        var field_index: AstNodeIndex = undefined;
+        edefer self.unreserve_node(field_index);
+
+        const name = self.prev;
+        if (self.match(TokenType::ScopeSquare)) {
+            field_index = self.reserve_node(@sizeof(0 as expr::GenericExpr));
+
+            const generic = self.parse_generic_expr(name);
+            if (generic.is_err()) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+            self.set_node(field_index, &generic.unwrap_ok() as *u32);
+        } else {
+            const ident_node = ast::ty::IdentType::new(
+                self.store_span_since(name),
+                self.ast.interner.intern(name.lexeme),
+            );
+            field_index = self.store_node(&ident_node as *u32, @sizeof(ident_node));
+        }
+
+        const node = expr::TrailingExpr::new(
+            self.store_span_since(start),
+            TrailingOp::Field,
+            operand,
+            field_index,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_deref_expr(self: *Parser, start: Token, operand: AstNodeIndex) Result[AstNodeIndex, void] {
+        const node = expr::UnaryExpr::new(self.store_span_since(start), UnaryOp::Deref, operand);
+        const index = self.store_node(&node as *u32, @sizeof(node));
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_tuple_index_expr(self: *Parser, start: Token, operand: AstNodeIndex) Result[AstNodeIndex, void] {
+        if (!self.eat(TokenType::Integer, ErrorType::ExpectedInteger)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = expr::TupleIndexExpr::new(
+            self.store_span_since(start),
+            operand,
+            self.store_span_since(self.prev),
+            self.ast.interner.intern(self.prev.lexeme),
+        );
+        const index = self.store_node(&node as *u32, @sizeof(node));
+        return Result::[AstNodeIndex, void]::Ok(index);
     }
 
     ////////////////////////
     //   Pattern Parsing  //
     ////////////////////////
+    fn parse_pattern(self: *Parser) Result[AstNodeIndex, void] {
+        const token = self.advance();
+        switch (token.type) {
+            TokenType::Identifier => return self.parse_ident_pattern(token);
+            TokenType::LeftParen => return self.parse_tuple_pattern(token);
+            TokenType::LeftBrace => return self.parse_destruct_pattern(token);
+            TokenType::LeftSquare => return self.parse_array_pattern(token);
+        }
+    }
+
+    fn parse_ident_pattern(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const node = ast::pattern::IdentPattern::new(
+            self.store_span_since(token),
+            self.ast.interner.intern(token.lexeme),
+        );
+        return Result::[AstNodeIndex, void]::Ok(self.store_node(&node as *u32, @sizeof(node)));
+    }
+
+    fn parse_tuple_pattern(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as ast::pattern::TuplePattern));
+        edefer self.unreserve_node(index);
+        const field_start = self.start_scratch();
+        defer self.clear_scratch(field_start);
+
+        var ignore_rest = false;
+        while (!self.check(TokenType::RightParen)) {
+            if (self.match(TokenType::DotDot)) {
+                ignore_rest = true;
+                break;
+            }
+            const pat = self.parse_pattern();
+            if (pat.is_err()) ereturn pat;
+            const pat_index = pat.unwrap_ok();
+
+            self.scratch.push(pat_index._private_index);
+            if (!self.match(TokenType::Comma)) break;
+        }
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const {_0: field_index, _1: field_count } = self.store_extra(field_start);
+        if (field_count > 255) {
+            const path_slice = self.path.as_slice();
+            @abort("Tuple pattern field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+        const node = ast::pattern::TuplePattern::new(
+            self.store_span_since(token),
+            ignore_rest,
+            field_count as u8,
+            field_index,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_destruct_pattern(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as ast::pattern::DestructPattern));
+        edefer self.unreserve_node(index);
+        const field_start = self.start_scratch();
+        defer self.clear_scratch(field_start);
+
+        var ignore_rest = false;
+        while (!self.check(TokenType::RightSquare)) {
+            if (self.match(TokenType::DotDot)) {
+                ignore_rest = true;
+                break;
+            }
+            if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+            const field_name_span = self.store_span_since(self.prev);
+            const field_name_sym = self.ast.interner.intern(self.prev.lexeme);
+
+            var rename_pattern: OptionalAstNodeIndex = undefined;
+            if (self.match(TokenType::Colon)) {
+                const pattern = self.parse_pattern();
+                if (pattern.is_err()) ereturn pattern;
+                rename_pattern = pattern.unwrap_ok().as_optional();
+            } else {
+                rename_pattern = OptionalAstNodeIndex::None();
+            }
+
+            const field = ast::pattern::DestructPatternField::new(
+                field_name_span,
+                field_name_sym,
+                rename_pattern,
+            );
+            self.push_scratch_chunks(&field as *u32, @sizeof(field));
+            if (!self.match(TokenType::Comma)) break;
+        }
+        if (!self.eat(TokenType::RightBrace, ErrorType::ExpectedRightBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const {_0: field_index, _1: field_chunks } = self.store_extra(field_start);
+        const field_count = field_chunks / (@sizeof(0 as ast::pattern::DestructPatternField) / 4);
+        if (field_count > 255) {
+            const path_slice = self.path.as_slice();
+            @abort("Destruct pattern field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+        const node = ast::pattern::DestructPattern::new(
+            self.store_span_since(token),
+            ignore_rest,
+            field_count as u8,
+            field_index,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_array_pattern(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as ast::pattern::ArrayPattern));
+        edefer self.unreserve_node(index);
+        const field_start = self.start_scratch();
+        defer self.clear_scratch(field_start);
+
+        var ignore_rest = false;
+        while (!self.check(TokenType::RightSquare)) {
+            if (self.match(TokenType::DotDot)) {
+                ignore_rest = true;
+                break;
+            }
+            const pat = self.parse_pattern();
+            if (pat.is_err()) ereturn pat;
+            const pat_index = pat.unwrap_ok();
+
+            self.scratch.push(pat_index._private_index);
+            if (!self.match(TokenType::Comma)) break;
+        }
+        if (!self.eat(TokenType::RightSquare, ErrorType::ExpectedRightSquare)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const {_0: field_index, _1: field_count } = self.store_extra(field_start);
+        if (field_count > 255) {
+            const path_slice = self.path.as_slice();
+            @abort("Array pattern entry count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+        const node = ast::pattern::ArrayPattern::new(
+            self.store_span_since(token),
+            ignore_rest,
+            field_count as u8,
+            field_index,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
 
     ////////////////////////
     //    Type Parsing    //
@@ -568,11 +1020,12 @@ pub struct Parser {
         if (!self.eat(TokenType::RightSquare, ErrorType::ExpectedRightSquare)) {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
-        const child = self.parse_expr();
+        const child = self.parse_type();
         if (child.is_err()) ereturn child;
 
         const node = ast::ty::ArrayType::new(
             self.store_span_since(token),
+            len.unwrap_ok(),
             child.unwrap_ok(),
         );
         self.set_node(index, &node as *u32);
@@ -661,6 +1114,7 @@ pub struct Parser {
             if (generic.is_err()) {
                 ereturn Result::[AstNodeIndex, void]::Err(0 as void);
             }
+
             const generic_node = generic.unwrap_ok(); 
             if (self.match(TokenType::Scope)) {
                 const generic_index = self.store_node(&generic_node as *u32, @sizeof(generic_node));
@@ -693,6 +1147,7 @@ pub struct Parser {
             if (generic.is_err()) {
                 ereturn Result::[ast::ty::GenericType, void]::Err(0 as void);
             }
+
             const generic_type_index = generic.unwrap_ok();
             self.scratch.push(generic_type_index._private_index);
             if (!self.match(TokenType::Comma)) break;
@@ -877,7 +1332,7 @@ pub struct Parser {
     fn store_span_since(self: *Parser, token: Token) SpanIndex {
         var index: SpanIndex = undefined;
         const start = (token.lexeme.ptr - self.src.ptr) as u32; 
-        const len = (self.curr.lexeme.ptr - token.lexeme.ptr) as u32;
+        const len = (self.prev.lexeme.ptr - token.lexeme.ptr + self.prev.lexeme.len) as u32;
         
         if (self.ast.spans.len > 4294967295) {
             const path_slice = self.path.as_slice();

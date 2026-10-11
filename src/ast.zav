@@ -57,11 +57,8 @@ pub struct Ast {
     }
 
     pub fn fmt(self: *const Ast, fmt: *Formatter) void {
-        if (self.nodes.is_empty()) {
-            fmt.unsafe_cstr_ptr("[empty]");
-            return;
-        }
-        self.display_node(fmt, 0 as u8);
+        const root_node = &self.nodes.items[0] as *RootNode;
+        root_node.fmt(fmt, self);
     }
 
     pub fn display_next_node(self: *const Ast, fmt: *Formatter, index: u64, size: u64) void {
@@ -79,7 +76,7 @@ pub struct Ast {
             AstNodeType::UintType => (node as *ty::UintType).fmt(fmt);
             AstNodeType::FloatType => (node as *ty::FloatType).fmt(fmt);
             AstNodeType::PtrType => (node as *ty::PtrType).fmt(fmt, self, index);
-            AstNodeType::ArrayType => (node as *ty::ArrayType).fmt(fmt, self, index);
+            AstNodeType::ArrayType => (node as *ty::ArrayType).fmt(fmt, self);
             AstNodeType::FnType => (node as *ty::FnType).fmt(fmt, self);
             AstNodeType::TupleType => (node as *ty::TupleType).fmt(fmt, self);
             AstNodeType::IdentType => (node as *ty::IdentType).fmt(fmt, self);
@@ -88,13 +85,15 @@ pub struct Ast {
             // pattern
             AstNodeType::IdentPattern => (node as *pattern::IdentPattern).fmt(fmt, self);
             AstNodeType::DestructPattern => (node as *pattern::DestructPattern).fmt(fmt, self);
+            AstNodeType::ArrayPattern => (node as *pattern::ArrayPattern).fmt(fmt, self);
             AstNodeType::TuplePattern => (node as *pattern::TuplePattern).fmt(fmt, self);
             // expr
-            AstNodeType::IfExpr => (node as *expr::IfExpr).fmt(fmt, self, index);
-            AstNodeType::BinaryExpr => (node as *expr::BinaryExpr).fmt(fmt, self, index);
-            AstNodeType::UnaryExpr => (node as *expr::UnaryExpr).fmt(fmt, self, index);
-            AstNodeType::TrailingExpr => (node as *expr::TrailingExpr).fmt(fmt, self, index);
-            AstNodeType::CallExpr => (node as *expr::CallExpr).fmt(fmt, self, index);
+            AstNodeType::IfExpr => (node as *expr::IfExpr).fmt(fmt, self);
+            AstNodeType::BinaryExpr => (node as *expr::BinaryExpr).fmt(fmt, self);
+            AstNodeType::UnaryExpr => (node as *expr::UnaryExpr).fmt(fmt, self);
+            AstNodeType::TrailingExpr => (node as *expr::TrailingExpr).fmt(fmt, self);
+            AstNodeType::TupleIndexExpr => (node as *expr::TupleIndexExpr).fmt(fmt, self);
+            AstNodeType::CallExpr => (node as *expr::CallExpr).fmt(fmt, self);
             AstNodeType::NativeExpr => (node as *expr::NativeExpr).fmt(fmt, self);
             AstNodeType::LambdaExpr => (node as *expr::LambdaExpr).fmt(fmt, self);
             AstNodeType::ArrayExpr => (node as *expr::ArrayExpr).fmt(fmt, self, index);
@@ -203,6 +202,26 @@ pub struct AstExtraIndex {
     }
 }
 
+pub struct RootNode {
+    type: AstNodeType;
+    start: OptionalAstNodeIndex;
+
+    pub fn new(start: OptionalAstNodeIndex) RootNode {
+        var self: RootNode = undefined;
+        self.type = AstNodeType::Root;
+        self.start = start;
+        return self;
+    }
+
+    pub fn fmt(self: *const RootNode, fmt: *Formatter, ast: *const Ast) void {
+        if (self.start.is_some()) {
+            ast.display_node(fmt, self.start._private_index);
+        } else {
+            fmt.unsafe_cstr_ptr("[empty]");
+        }
+    }
+}
+
 pub struct Parameter {
     pattern: AstNodeIndex;
     ty: AstNodeIndex;
@@ -238,6 +257,7 @@ pub struct AstPoison {
 }
 
 pub enum AstNodeType {
+    Root,
     /* item */
     DeclItem,
     ModuleItem,
@@ -273,6 +293,7 @@ pub enum AstNodeType {
     BinaryExpr,
     UnaryExpr,
     TrailingExpr,
+    TupleIndexExpr,
     CallExpr,
     NativeExpr,
     LambdaExpr,
@@ -301,6 +322,7 @@ pub enum AstNodeType {
     /* patterns */
     IdentPattern,
     DestructPattern,
+    ArrayPattern,
     TuplePattern,
 
     /* shared */

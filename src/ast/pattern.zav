@@ -46,30 +46,63 @@ pub struct DestructPattern {
     }
 
     pub fn fmt(self: *const DestructPattern, fmt: *Formatter, ast: *const Ast) void {
-        fmt.unsafe_cstr_ptr("{ ");
-        if (self.field_count > 1) {
+        fmt.unsafe_cstr_ptr("{");
+        if (self.field_count > 0) {
             const first_field = &ast.extra.items[self.fields._private_index] as *DestructPatternField;
             first_field.fmt(fmt, ast);
-            for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
+            for (1..self.field_count, &first_field[1]) |_, field| {
                 fmt.unsafe_cstr_ptr(", ");
                 (field as *DestructPatternField).fmt(fmt, ast);
             }
             if (self.ignore_rest) fmt.unsafe_cstr_ptr(", ..");
         } else if (self.ignore_rest) fmt.unsafe_cstr_ptr("..");
-        fmt.unsafe_cstr_ptr(" }");
+        fmt.unsafe_cstr_ptr("}");
+    }
+}
+
+pub struct ArrayPattern {
+    type: AstNodeType;
+    ignore_rest: bool;
+    entry_count: u8;
+    span: SpanIndex;
+    entries: AstExtraIndex; // list of AstNodeIndex (patterns)
+
+    pub fn new(span: SpanIndex, ignore_rest: bool, entry_count: u8, entries: AstExtraIndex) ArrayPattern {
+        var self: ArrayPattern = undefined;
+        self.type = AstNodeType::ArrayPattern;
+        self.ignore_rest = ignore_rest;
+        self.entry_count = entry_count;
+        self.span = span;
+        self.entries = entries;
+        return self;
+    }
+
+    pub fn fmt(self: *const ArrayPattern, fmt: *Formatter, ast: *const Ast) void {
+        fmt.unsafe_cstr_ptr("[");
+        if (self.entry_count > 0) {
+            ast.display_node(fmt, ast.extra.items[self.entries._private_index]);
+            for (1..self.entry_count, &ast.extra.items[self.entries._private_index + 1]) |_, entry| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, entry.*);
+            }
+            if (self.ignore_rest) fmt.unsafe_cstr_ptr(", ..");
+        } else if (self.ignore_rest) fmt.unsafe_cstr_ptr("..");
+        fmt.unsafe_cstr_ptr("]");
     }
 }
 
 pub struct TuplePattern {
     type: AstNodeType;
+    ignore_rest: bool;
     field_count: u8;
     pad: u8;
     span: SpanIndex;
-    fields: AstExtraIndex; // list of patterns
+    fields: AstExtraIndex; // list of AstNodeIndex (patterns)
 
-    pub fn new(span: SpanIndex, field_count: u8, fields: AstExtraIndex) TuplePattern {
+    pub fn new(span: SpanIndex, ignore_rest: bool, field_count: u8, fields: AstExtraIndex) TuplePattern {
         var self: TuplePattern = undefined;
         self.type = AstNodeType::TuplePattern;
+        self.ignore_rest = ignore_rest;
         self.field_count = field_count;
         self.pad = 0 as u8;
         self.span = span;
@@ -79,13 +112,14 @@ pub struct TuplePattern {
 
     pub fn fmt(self: *const TuplePattern, fmt: *Formatter, ast: *const Ast) void {
         fmt.unsafe_cstr_ptr("(");
-        if (self.field_count > 1) {
+        if (self.field_count > 0) {
             ast.display_node(fmt, ast.extra.items[self.fields._private_index]);
             for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
                 fmt.unsafe_cstr_ptr(", ");
                 ast.display_node(fmt, field.*);
             }
-        }
+            if (self.ignore_rest) fmt.unsafe_cstr_ptr(", ..");
+        } else if (self.ignore_rest) fmt.unsafe_cstr_ptr("..");
         fmt.unsafe_cstr_ptr(")");
     }
 }

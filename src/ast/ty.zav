@@ -124,21 +124,22 @@ pub struct ArrayType {
     type: AstNodeType;
     pad: u16;
     span: SpanIndex;
-    // len: AstNodeIndex; (always +1) // const expr
+    len: AstNodeIndex; // expr
     child: AstNodeIndex;
 
-    pub fn new(span: SpanIndex, child: AstNodeIndex) ArrayType {
+    pub fn new(span: SpanIndex, len: AstNodeIndex, child: AstNodeIndex) ArrayType {
         var self: ArrayType = undefined;
         self.type = AstNodeType::ArrayType;
         self.pad = 0 as u16;
         self.span = span;
+        self.len = len;
         self.child = child;
         return self;
     }
 
-    pub fn fmt(self: *const ArrayType, fmt: *Formatter, ast: *const Ast, index: u64) void {
+    pub fn fmt(self: *const ArrayType, fmt: *Formatter, ast: *const Ast) void {
         fmt.unsafe_cstr_ptr("[");
-        ast.display_next_node(fmt, index, @sizeof(self.*));
+        ast.display_node(fmt, self.len._private_index);
         fmt.unsafe_cstr_ptr("]");
         ast.display_node(fmt, self.child._private_index);
     }

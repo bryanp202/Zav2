@@ -395,6 +395,8 @@ pub enum ErrorType {
     ExpectedPipe,
     ExpectedColon,
     ExpectedIdentifier,
+    ExpectedInteger,
+    ExpectedQuestionMark,
     InvalidCharLiteral,
     InvalidDigitSeperator,
     InvalidExpr,
@@ -419,7 +421,9 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
         ErrorType::ExpectedRightSquare => msg = "expected ']'";
         ErrorType::ExpectedPipe => msg = "expected '|'";
         ErrorType::ExpectedColon => msg = "expected ':'";
+        ErrorType::ExpectedQuestionMark => msg = "expected '?'";
         ErrorType::ExpectedIdentifier => msg = "expected an identifier";
+        ErrorType::ExpectedInteger => msg = "expected integer literal";
         ErrorType::InvalidCharLiteral => msg = "invalid char literal";
         ErrorType::InvalidDigitSeperator => msg = "expected digit seperator to be between two digits";
         ErrorType::InvalidExpr => msg = "invalid expression";
