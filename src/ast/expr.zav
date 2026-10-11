@@ -645,7 +645,7 @@ pub fn tt_to_binary_op(tt: TokenType) BinaryOp {
         TokenType::GreaterEqual => op = BinaryOp::CompareGE;
         TokenType::Pipe => op = BinaryOp::BitOr;
         TokenType::Caret => op = BinaryOp::BitXor;
-        TokenType::Ampersand => op = BinaryOp::BitXor;
+        TokenType::Ampersand => op = BinaryOp::BitAnd;
         TokenType::ShiftRight => op = BinaryOp::ShiftR;
         TokenType::ShiftLeft => op = BinaryOp::ShiftL;
         TokenType::Plus => op = BinaryOp::TermAdd;
