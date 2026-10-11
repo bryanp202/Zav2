@@ -251,9 +251,7 @@ pub struct Parser {
         } else {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
-        if (name_expr.is_err() or !self.eat(TokenType::Pipe, ErrorType::ExpectedPipe)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
+        if (name_expr.is_err()) ereturn name_expr;
 
         while (!self.check(TokenType::RightBrace)) {
             if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {

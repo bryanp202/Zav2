@@ -309,8 +309,8 @@ pub struct StructExpr {
     pub fn fmt(self: *const StructExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
         fmt.unsafe_cstr_ptr(".{");
         ast.display_next_node(fmt, index, @sizeof(self.*));
-        fmt.unsafe_cstr_ptr("| ");
         if (self.field_count > 0) {
+            fmt.unsafe_cstr_ptr(" ");
             const first_field = &ast.extra.items[self.fields._private_index];
             (first_field as *StructExprField).fmt(fmt, ast);
             for (1..self.field_count) |i| {
@@ -319,7 +319,7 @@ pub struct StructExpr {
                 (field as *StructExprField).fmt(fmt, ast);
             }
         }
-        fmt.unsafe_cstr_ptr(" }");
+        fmt.unsafe_cstr_ptr("}");
     }
 }
 
