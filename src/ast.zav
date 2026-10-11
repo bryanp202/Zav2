@@ -93,6 +93,7 @@ pub struct Ast {
             AstNodeType::IfExpr => (node as *expr::IfExpr).fmt(fmt, self, index);
             AstNodeType::BinaryExpr => (node as *expr::BinaryExpr).fmt(fmt, self, index);
             AstNodeType::UnaryExpr => (node as *expr::UnaryExpr).fmt(fmt, self, index);
+            AstNodeType::TrailingExpr => (node as *expr::TrailingExpr).fmt(fmt, self, index);
             AstNodeType::CallExpr => (node as *expr::CallExpr).fmt(fmt, self, index);
             AstNodeType::NativeExpr => (node as *expr::NativeExpr).fmt(fmt, self);
             AstNodeType::LambdaExpr => (node as *expr::LambdaExpr).fmt(fmt, self);
@@ -271,6 +272,7 @@ pub enum AstNodeType {
     IfExpr,
     BinaryExpr,
     UnaryExpr,
+    TrailingExpr,
     CallExpr,
     NativeExpr,
     LambdaExpr,

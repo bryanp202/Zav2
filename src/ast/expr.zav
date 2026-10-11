@@ -76,14 +76,6 @@ pub struct BinaryExpr {
             BinaryOp::FactorMul => op = "*";
             BinaryOp::FactorDiv => op = "/";
             BinaryOp::FactorRem => op = "%";
-            BinaryOp::Index => op = ".";
-            BinaryOp::Conversion => op = "as";
-            BinaryOp::Field => {
-                fmt.unsafe_cstr_ptr("[");
-                ast.display_node(fmt, self.rhs._private_index);
-                fmt.unsafe_cstr_ptr("]");
-                return;
-            }
         }
         fmt.unsafe_cstr_ptr(op);
         ast.display_node(fmt, self.rhs._private_index);
@@ -121,6 +113,39 @@ pub struct UnaryExpr {
         }
         fmt.unsafe_cstr_ptr(op);
         ast.display_next_node(fmt, index, @sizeof(self.*));
+    }
+}
+ 
+pub struct TrailingExpr {
+    type: AstNodeType;
+    op: TrailingOp;
+    span: SpanIndex;
+    // operand: AstNodeIndex (always +1);
+    trailing: AstNodeIndex;
+
+    pub fn new(span: SpanIndex, op: TrailingOp, trailing: AstNodeIndex) TrailingExpr {
+        var self: TrailingExpr = undefined;
+        self.type = AstNodeType::TrailingExpr;
+        self.op = op;
+        self.trailing = trailing;
+        return self;
+    }
+
+    pub fn fmt(self: *const TrailingExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        ast.display_next_node(fmt, index, @sizeof(self.*));
+        var op: *const u8 = undefined;
+        switch (self.op) {
+            TrailingOp::Index => op = ".";
+            TrailingOp::Conversion => op = " as ";
+            TrailingOp::Field => {
+                fmt.unsafe_cstr_ptr("[");
+                ast.display_node(fmt, self.trailing._private_index);
+                fmt.unsafe_cstr_ptr("]");
+                return;
+            }
+        }
+        fmt.unsafe_cstr_ptr(op);
+        ast.display_node(fmt, self.trailing._private_index);
     }
 }
 
@@ -477,10 +502,6 @@ pub enum BinaryOp {
     FactorMul,
     FactorDiv,
     FactorRem,
-    // trailing expr
-    Conversion,
-    Index,
-    Field,
 }
 
 pub enum UnaryOp {
@@ -489,6 +510,12 @@ pub enum UnaryOp {
     Bang,
     Ref,
     Deref,
+}
+
+pub enum TrailingOp {
+    Conversion,
+    Index,
+    Field,
 }
 
 pub enum PrimativeType {
