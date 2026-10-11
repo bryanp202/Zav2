@@ -392,6 +392,9 @@ pub enum ErrorType {
     ExpectedRightParen,
     ExpectedLeftSquare,
     ExpectedRightSquare,
+    ExpectedPipe,
+    ExpectedColon,
+    ExpectedIdentifier,
     InvalidCharLiteral,
     InvalidDigitSeperator,
     InvalidExpr,
@@ -410,7 +413,13 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
     switch (type) {
         ErrorType::ExpectedLeftParen => msg = "expected '('";
         ErrorType::ExpectedRightParen => msg = "expected ')'";
+        ErrorType::ExpectedLeftBrace => msg = "expected '{'";
+        ErrorType::ExpectedRightBrace => msg = "expected '}'";
+        ErrorType::ExpectedLeftSquare => msg = "expected '['";
         ErrorType::ExpectedRightSquare => msg = "expected ']'";
+        ErrorType::ExpectedPipe => msg = "expected '|'";
+        ErrorType::ExpectedColon => msg = "expected ':'";
+        ErrorType::ExpectedIdentifier => msg = "expected an identifier";
         ErrorType::InvalidCharLiteral => msg = "invalid char literal";
         ErrorType::InvalidDigitSeperator => msg = "expected digit seperator to be between two digits";
         ErrorType::InvalidExpr => msg = "invalid expression";
@@ -418,7 +427,6 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
         ErrorType::InvalidScientificNotation => msg = "invalid floating point scientific notation";
         ErrorType::InvalidScope => msg = "invalid scope";
         ErrorType::InvalidType => msg = "invalid type";
-        ErrorType::UnclosedDelimiter => msg = "unclosed delimiter";
         ErrorType::UnterminatedBlockComment => msg = "unterminated block comment";
         ErrorType::UnterminatedStringLiteral => msg = "unterminated string literal";
         ErrorType::UnexpectedSymbol => msg = "unexpected symbol";

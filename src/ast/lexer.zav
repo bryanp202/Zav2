@@ -57,7 +57,10 @@ pub struct Lexer {
             '>' => tt = self.match('>') ? self.match('=') ? TokenType::ShiftRightEqual : TokenType::ShiftRight : self.match('=') ? TokenType::GreaterEqual : TokenType::Greater;
             '<' => tt = self.match('<') ? self.match('=') ? TokenType::ShiftLeftEqual : TokenType::ShiftLeft : self.match('=') ? TokenType::LessEqual : TokenType::Less;
             // Other
-            '.' => tt = self.match('.') ? TokenType::DotDot : TokenType::Dot;
+            '.' => tt = self.match('.') ? TokenType::DotDot
+                : self.match('(') ? TokenType::DotParen
+                : self.match('{') ? TokenType::DotBrace
+                : TokenType::Dot;
             ':' => tt = self.match(':') ? self.match('[') ? TokenType::ScopeSquare : TokenType::Scope : TokenType::Colon;
             '[' => tt = self.match(']') ? TokenType::ArrayType : TokenType::LeftSquare;
             ']' => tt = TokenType::RightSquare;
@@ -69,9 +72,9 @@ pub struct Lexer {
             ',' => tt = TokenType::Comma;
             '?' => tt = TokenType::QuestionMark;
             // Literals
-            '@' => return self.native();
             '"' => return self.string();
             ''' => return self.char();
+            '@' => return self.native();
             else => return self.error(ErrorType::UnexpectedSymbol);
         }
 
@@ -398,6 +401,8 @@ pub enum TokenType {
     // Other
     Dot,
     DotDot,
+    DotParen,
+    DotBrace,
     Comma,
     Colon,
     Scope, // ::

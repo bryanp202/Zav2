@@ -168,7 +168,7 @@ pub struct CallExpr {
     pub fn fmt(self: *const CallExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
         ast.display_next_node(fmt, index, @sizeof(self.*));
         fmt.unsafe_cstr_ptr("(");
-        if (self.arg_count > 1) {
+        if (self.arg_count > 0) {
             ast.display_node(fmt, ast.extra.items[self.args._private_index ]);
             for (1..self.arg_count, &ast.extra.items[self.args._private_index + 1]) |_, arg| {
                 fmt.unsafe_cstr_ptr(", ");
@@ -199,7 +199,7 @@ pub struct NativeExpr {
     pub fn fmt(self: *const NativeExpr, fmt: *Formatter, ast: *const Ast) void {
         fmt.slice(ast.interner.get(self.name));
         fmt.unsafe_cstr_ptr("(");
-        if (self.arg_count > 1) {
+        if (self.arg_count > 0) {
             ast.display_node(fmt, ast.extra.items[self.args._private_index ]);
             for (1..self.arg_count, &ast.extra.items[self.args._private_index + 1]) |_, arg| {
                 fmt.unsafe_cstr_ptr(", ");
@@ -236,7 +236,7 @@ pub struct LambdaExpr {
 
     pub fn fmt(self: *const LambdaExpr, fmt: *Formatter, ast: *const Ast) void {
         fmt.unsafe_cstr_ptr("|");
-        if (self.param_count > 1) {
+        if (self.param_count > 0) {
             const first_param = &ast.extra.items[self.params._private_index] as *Parameter;
             first_param.fmt(fmt, ast);
             for (1..self.param_count, &ast.extra.items[self.params._private_index + 1]) |_, param| {
@@ -276,16 +276,16 @@ pub struct ArrayExpr {
         fmt.unsafe_cstr_ptr("[");
         fmt.unsafe_cstr_ptr("]");
         ast.display_next_node(fmt, index, @sizeof(self.*));
-        fmt.unsafe_cstr_ptr("{");
+        fmt.unsafe_cstr_ptr("[");
         const len = (self.len_upper << 32 | self.len_lower) as u64;
-        if (len > 1) {
+        if (len > 0) {
             ast.display_node(fmt, ast.extra.items[self.entries._private_index ]);
             for (1..len, &ast.extra.items[self.entries._private_index + 1]) |_, entry| {
                 fmt.unsafe_cstr_ptr(", ");
                 ast.display_node(fmt, entry.*);
             }
         }
-        fmt.unsafe_cstr_ptr("}");
+        fmt.unsafe_cstr_ptr("]");
     }
 }
 
@@ -294,7 +294,7 @@ pub struct StructExpr {
     type: AstNodeType;
     field_count: u16;
     span: SpanIndex;
-    // struct_type: AstNodeIndex (always +1); // type
+    // struct_name: AstNodeIndex (always +1); // ident or scope expr
     fields: AstExtraIndex; // list of StructExprField
 
     pub fn new(span: SpanIndex, field_count: u16, fields: AstExtraIndex) StructExpr {
@@ -307,29 +307,33 @@ pub struct StructExpr {
     }
 
     pub fn fmt(self: *const StructExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+        fmt.unsafe_cstr_ptr(".{");
         ast.display_next_node(fmt, index, @sizeof(self.*));
-        fmt.unsafe_cstr_ptr(" {");
-        if (self.field_count > 1) {
+        fmt.unsafe_cstr_ptr("| ");
+        if (self.field_count > 0) {
             const first_field = &ast.extra.items[self.fields._private_index];
             (first_field as *StructExprField).fmt(fmt, ast);
-            for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
+            for (1..self.field_count) |i| {
                 fmt.unsafe_cstr_ptr(", ");
+                const field = &ast.extra.items[self.fields._private_index + i * @sizeof(0 as StructExprField) / 4];
                 (field as *StructExprField).fmt(fmt, ast);
             }
         }
-        fmt.unsafe_cstr_ptr("}");
+        fmt.unsafe_cstr_ptr(" }");
     }
 }
 
 pub struct TupleExpr {
     type: AstNodeType;
-    field_count: u16;
+    pad: u8;
+    field_count: u8;
     span: SpanIndex;
     fields: AstExtraIndex; // list of AstNode (Expr)
 
-    pub fn new(span: SpanIndex, field_count: u16, fields: AstExtraIndex) TupleExpr {
+    pub fn new(span: SpanIndex, field_count: u8, fields: AstExtraIndex) TupleExpr {
         var self: TupleExpr = undefined;
         self.type = AstNodeType::TupleExpr;
+        self.pad = 0 as u8;
         self.field_count = field_count;
         self.span = span;
         self.fields = fields;
@@ -337,8 +341,8 @@ pub struct TupleExpr {
     }
 
     pub fn fmt(self: *const TupleExpr, fmt: *Formatter, ast: *const Ast) void {
-        fmt.unsafe_cstr_ptr("(");
-        if (self.field_count > 1) {
+        fmt.unsafe_cstr_ptr(".(");
+        if (self.field_count >= 1) {
             ast.display_node(fmt, ast.extra.items[self.fields._private_index]);
             for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
                 fmt.unsafe_cstr_ptr(", ");
@@ -540,6 +544,7 @@ pub enum Precedence {
     Shift,
     Term,
     Factor,
+    Unary,
     PostFix,
     Primary,
 }
