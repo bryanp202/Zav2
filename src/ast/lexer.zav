@@ -355,14 +355,11 @@ pub struct Lexer {
     }
 
     fn peek(self: *const Lexer) u8 {
-        return self.curr.*;
+        return self.curr != self.end ? self.curr.* : 0 as u8;
     }
 
     fn peek_next(self: *const Lexer) u8 {
-        if (self.curr + 1 != self.end) {
-            return self.curr[1];
-        }
-        return 0 as u8;
+        return self.curr + 1 != self.end ? self.curr[1] : 0 as u8;
     }
 
     fn check(self: *Lexer, expected: u8) bool {
@@ -378,7 +375,7 @@ pub struct Lexer {
     }
 
     fn advance(self: *Lexer) u8 {
-        const c = self.peek();
+        const c = self.curr.*;
         self.curr += 1 as *const u8;
         return c;
     }
