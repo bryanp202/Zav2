@@ -134,7 +134,7 @@ pub struct Parser {
         var fmt = ::std::fmt::Formatter::new_for_terminal();
         defer fmt.free();
         fmt.unsafe_cstr_ptr("storage (bytes): ");
-        fmt.uint((self.ast.nodes.len * 4 + self.ast.extra.len * 4 + self.ast.spans.len * 4) as u64);
+        fmt.uint((self.ast.nodes.len * 4 + self.ast.extra.len * 4 + self.ast.spans.len * 8) as u64);
         fmt.newline();
         self.ast.nodes.fmt(&fmt);
         fmt.newline();
