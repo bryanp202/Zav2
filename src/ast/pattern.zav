@@ -52,7 +52,7 @@ pub struct DestructPattern {
             first_field.fmt(fmt, ast, indent);
             for (1..self.field_count, &first_field[1]) |_, field| {
                 fmt.unsafe_cstr_ptr(", ");
-                (field as *DestructPatternField).fmt(fmt, ast, indent);
+                field.fmt(fmt, ast, indent);
             }
             if (self.ignore_rest) fmt.unsafe_cstr_ptr(", ..");
         } else if (self.ignore_rest) fmt.unsafe_cstr_ptr("..");
