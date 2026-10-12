@@ -34,9 +34,9 @@ pub struct IfExpr {
 
     pub fn fmt(self: *const IfExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         ast.display_node(fmt, self.cond._private_index, indent);
-        fmt.unsafe_cstr_ptr("?");
+        fmt.unsafe_cstr_ptr(" ? ");
         ast.display_node(fmt, self.then_branch._private_index, indent);
-        fmt.unsafe_cstr_ptr(":");
+        fmt.unsafe_cstr_ptr(" : ");
         ast.display_node(fmt, self.else_branch._private_index, indent);
     }
 }
