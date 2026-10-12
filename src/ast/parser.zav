@@ -196,7 +196,6 @@ pub struct Parser {
             | TokenType::Bang => return self.parse_unary_expr(token);
             TokenType::LeftParen => return self.parse_grouping_expr(token);
             TokenType::DotParen => return self.parse_tuple_expr(token);
-            TokenType::DotBrace => return self.parse_struct_expr(token);
             TokenType::ArrayType => return self.parse_array_expr(token);
             TokenType::Pipe => return self.parse_lambda_expr(token);
             TokenType::Native => return self.parse_native_expr(token);
@@ -260,21 +259,11 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    fn parse_struct_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+    fn parse_struct_expr(self: *Parser, token: Token, name_expr: AstNodeIndex) Result[AstNodeIndex, void] {
         const index = self.reserve_node(@sizeof(0 as expr::StructExpr));
         edefer self.unreserve_node(index);
         const field_start = self.start_scratch();
         defer self.clear_scratch(field_start);
-
-        var name_expr: Result[AstNodeIndex, void] = undefined;
-        if (self.match(TokenType::Scope)) {
-            name_expr = self.parse_scoped_expr(self.prev, self.reserve_node(@sizeof(0 as expr::ScopedExpr)), OptionalAstNodeIndex::None());
-        } else if (self.match(TokenType::Identifier)) {
-            name_expr = self.parse_ident_expr(self.prev);
-        } else {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
-        if (name_expr.is_err()) ereturn name_expr;
 
         while (!self.check(TokenType::RightBrace)) {
             if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
@@ -310,6 +299,7 @@ pub struct Parser {
         const node = expr::StructExpr::new(
             self.store_span_since(token),
             field_count as u16,
+            name_expr,
             fields,
         );
         self.set_node(index, &node as *u32);
@@ -460,6 +450,8 @@ pub struct Parser {
                 return self.parse_scoped_expr(name, index, generic_index.as_optional());
             }
             self.set_node(index, &generic_node as *u32);
+
+            if (self.match(TokenType::LeftBrace)) return self.parse_struct_expr(name, index);
             return Result::[AstNodeIndex, void]::Ok(index); 
         }
 
@@ -473,6 +465,7 @@ pub struct Parser {
             return self.parse_scoped_expr(name, scope_index, ident_index.as_optional());
         }
         const index = self.store_node(&ident_node as *u32, @sizeof(ident_node));
+        if (self.match(TokenType::LeftBrace)) return self.parse_struct_expr(name, index);
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
@@ -566,6 +559,7 @@ pub struct Parser {
             scopes,
         );
         self.set_node(scope_index, &node as *u32);
+        if (self.match(TokenType::LeftBrace)) return self.parse_struct_expr(token, scope_index);
         return Result::[AstNodeIndex, void]::Ok(scope_index); 
     }
 
@@ -600,7 +594,7 @@ pub struct Parser {
             if (new_prec < prec) {
                 return Result::[AstNodeIndex, void]::Ok(expr);
             }
-            self.advance_unchecked();
+            self.advance();
 
             var expr_result: Result[AstNodeIndex, void] = undefined;
             switch (new_prec) {
@@ -1256,13 +1250,9 @@ pub struct Parser {
         return self.curr.type == tt;
     }
 
-    fn advance_unchecked(self: *Parser) void {
+    fn advance(self: *Parser) Token {
         self.prev = self.curr;
         self.curr = self.lexer.next_token();
-    }
-
-    fn advance(self: *Parser) Token {
-        self.advance_unchecked();
         while (self.check(TokenType::Error)) {
             self.error_curr(self.curr.err);
             self.curr = self.lexer.next_token();
@@ -1272,7 +1262,7 @@ pub struct Parser {
 
     fn match(self: *Parser, tt: TokenType) bool {
         if (self.check(tt)) {
-            self.advance_unchecked();
+            self.advance();
             return true;
         }
         return false;
@@ -1280,7 +1270,7 @@ pub struct Parser {
 
     fn eat(self: *Parser, tt: TokenType, err: ErrorType) bool {
         if (self.curr.type == tt) {
-            self.advance_unchecked();
+            self.advance();
             return true;
         }
         self.error_curr(err);

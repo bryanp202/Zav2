@@ -340,21 +340,22 @@ pub struct StructExpr {
     type: AstNodeType;
     field_count: u16;
     span: SpanIndex;
-    // struct_name: AstNodeIndex (always +1); // ident or scope expr
+    name_expr: AstNodeIndex;
     fields: AstExtraIndex; // list of StructExprField
 
-    pub fn new(span: SpanIndex, field_count: u16, fields: AstExtraIndex) StructExpr {
+    pub fn new(span: SpanIndex, field_count: u16, name_expr: AstNodeIndex, fields: AstExtraIndex) StructExpr {
         var self: StructExpr = undefined;
         self.type = AstNodeType::StructExpr;
         self.field_count = field_count;
+        self.name_expr = name_expr;
         self.span = span;
         self.fields = fields;
         return self;
     }
 
-    pub fn fmt(self: *const StructExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
-        fmt.unsafe_cstr_ptr(".{");
-        ast.display_next_node(fmt, index, @sizeof(self.*));
+    pub fn fmt(self: *const StructExpr, fmt: *Formatter, ast: *const Ast) void {
+        ast.display_node(fmt, self.name_expr._private_index);
+        fmt.unsafe_cstr_ptr(" {");
         if (self.field_count > 0) {
             fmt.unsafe_cstr_ptr(" ");
             const first_field = &ast.extra.items[self.fields._private_index];
@@ -364,6 +365,7 @@ pub struct StructExpr {
                 const field = &ast.extra.items[self.fields._private_index + i * @sizeof(0 as StructExprField) / 4];
                 (field as *StructExprField).fmt(fmt, ast);
             }
+            fmt.unsafe_cstr_ptr(" ");
         }
         fmt.unsafe_cstr_ptr("}");
     }

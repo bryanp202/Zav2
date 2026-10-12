@@ -59,7 +59,6 @@ pub struct Lexer {
             // Other
             '.' => tt = self.match('.') ? TokenType::DotDot
                 : self.match('(') ? TokenType::DotParen
-                : self.match('{') ? TokenType::DotBrace
                 : TokenType::Dot;
             ':' => tt = self.match(':') ? self.match('[') ? TokenType::ScopeSquare : TokenType::Scope : TokenType::Colon;
             '[' => tt = self.match(']') ? TokenType::ArrayType : TokenType::LeftSquare;
@@ -397,7 +396,6 @@ pub enum TokenType {
     Dot,
     DotDot,
     DotParen,
-    DotBrace,
     Comma,
     Colon,
     Scope, // ::

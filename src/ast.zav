@@ -97,7 +97,7 @@ pub struct Ast {
             AstNodeType::NativeExpr => (node as *expr::NativeExpr).fmt(fmt, self);
             AstNodeType::LambdaExpr => (node as *expr::LambdaExpr).fmt(fmt, self);
             AstNodeType::ArrayExpr => (node as *expr::ArrayExpr).fmt(fmt, self, index);
-            AstNodeType::StructExpr => (node as *expr::StructExpr).fmt(fmt, self, index);
+            AstNodeType::StructExpr => (node as *expr::StructExpr).fmt(fmt, self);
             AstNodeType::TupleExpr => (node as *expr::TupleExpr).fmt(fmt, self);
             AstNodeType::PrimativeExpr => (node as *expr::PrimativeExpr).fmt(fmt, self);
             AstNodeType::IdentExpr => (node as *expr::IdentExpr).fmt(fmt, self);
