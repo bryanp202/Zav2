@@ -61,11 +61,11 @@ pub struct Ast {
         root_node.fmt(fmt, self);
     }
 
-    pub fn display_next_node(self: *const Ast, fmt: *Formatter, index: u64, size: u64) void {
-        self.display_node(fmt, index + size / 4 as u8);
+    pub fn display_next_node(self: *const Ast, fmt: *Formatter, index: u64, size: u64, indent: u64) void {
+        self.display_node(fmt, index + size / 4 as u8, indent);
     } 
 
-    pub fn display_node(self: *const Ast, fmt: *Formatter, index: u64) void {
+    pub fn display_node(self: *const Ast, fmt: *Formatter, index: u64, indent: u64) void {
         const node = &self.nodes.items[index];
         const type = node.* as AstNodeType;
         switch (type) {
@@ -75,34 +75,34 @@ pub struct Ast {
             AstNodeType::IntType => (node as *ty::IntType).fmt(fmt);
             AstNodeType::UintType => (node as *ty::UintType).fmt(fmt);
             AstNodeType::FloatType => (node as *ty::FloatType).fmt(fmt);
-            AstNodeType::PtrType => (node as *ty::PtrType).fmt(fmt, self, index);
-            AstNodeType::ArrayType => (node as *ty::ArrayType).fmt(fmt, self);
-            AstNodeType::FnType => (node as *ty::FnType).fmt(fmt, self);
-            AstNodeType::TupleType => (node as *ty::TupleType).fmt(fmt, self);
+            AstNodeType::PtrType => (node as *ty::PtrType).fmt(fmt, self, index, indent);
+            AstNodeType::ArrayType => (node as *ty::ArrayType).fmt(fmt, self, indent);
+            AstNodeType::FnType => (node as *ty::FnType).fmt(fmt, self, indent);
+            AstNodeType::TupleType => (node as *ty::TupleType).fmt(fmt, self, indent);
             AstNodeType::IdentType => (node as *ty::IdentType).fmt(fmt, self);
-            AstNodeType::GenericType => (node as *ty::GenericType).fmt(fmt, self);
-            AstNodeType::ScopedType => (node as *ty::ScopedType).fmt(fmt, self);
+            AstNodeType::GenericType => (node as *ty::GenericType).fmt(fmt, self, indent);
+            AstNodeType::ScopedType => (node as *ty::ScopedType).fmt(fmt, self, indent);
             // pattern
             AstNodeType::IdentPattern => (node as *pattern::IdentPattern).fmt(fmt, self);
-            AstNodeType::DestructPattern => (node as *pattern::DestructPattern).fmt(fmt, self);
-            AstNodeType::ArrayPattern => (node as *pattern::ArrayPattern).fmt(fmt, self);
-            AstNodeType::TuplePattern => (node as *pattern::TuplePattern).fmt(fmt, self);
+            AstNodeType::DestructPattern => (node as *pattern::DestructPattern).fmt(fmt, self, indent);
+            AstNodeType::ArrayPattern => (node as *pattern::ArrayPattern).fmt(fmt, self, indent);
+            AstNodeType::TuplePattern => (node as *pattern::TuplePattern).fmt(fmt, self, indent);
             // expr
-            AstNodeType::IfExpr => (node as *expr::IfExpr).fmt(fmt, self);
-            AstNodeType::BinaryExpr => (node as *expr::BinaryExpr).fmt(fmt, self);
-            AstNodeType::UnaryExpr => (node as *expr::UnaryExpr).fmt(fmt, self);
-            AstNodeType::TrailingExpr => (node as *expr::TrailingExpr).fmt(fmt, self);
-            AstNodeType::TupleIndexExpr => (node as *expr::TupleIndexExpr).fmt(fmt, self);
-            AstNodeType::CallExpr => (node as *expr::CallExpr).fmt(fmt, self);
-            AstNodeType::NativeExpr => (node as *expr::NativeExpr).fmt(fmt, self);
-            AstNodeType::LambdaExpr => (node as *expr::LambdaExpr).fmt(fmt, self);
-            AstNodeType::ArrayExpr => (node as *expr::ArrayExpr).fmt(fmt, self, index);
-            AstNodeType::StructExpr => (node as *expr::StructExpr).fmt(fmt, self);
-            AstNodeType::TupleExpr => (node as *expr::TupleExpr).fmt(fmt, self);
+            AstNodeType::IfExpr => (node as *expr::IfExpr).fmt(fmt, self, indent);
+            AstNodeType::BinaryExpr => (node as *expr::BinaryExpr).fmt(fmt, self, indent);
+            AstNodeType::UnaryExpr => (node as *expr::UnaryExpr).fmt(fmt, self, indent);
+            AstNodeType::TrailingExpr => (node as *expr::TrailingExpr).fmt(fmt, self, indent);
+            AstNodeType::TupleIndexExpr => (node as *expr::TupleIndexExpr).fmt(fmt, self, indent);
+            AstNodeType::CallExpr => (node as *expr::CallExpr).fmt(fmt, self, indent);
+            AstNodeType::NativeExpr => (node as *expr::NativeExpr).fmt(fmt, self, indent);
+            AstNodeType::LambdaExpr => (node as *expr::LambdaExpr).fmt(fmt, self, indent);
+            AstNodeType::ArrayExpr => (node as *expr::ArrayExpr).fmt(fmt, self, index, indent);
+            AstNodeType::StructExpr => (node as *expr::StructExpr).fmt(fmt, self, indent);
+            AstNodeType::TupleExpr => (node as *expr::TupleExpr).fmt(fmt, self, indent);
             AstNodeType::PrimativeExpr => (node as *expr::PrimativeExpr).fmt(fmt, self);
             AstNodeType::IdentExpr => (node as *expr::IdentExpr).fmt(fmt, self);
-            AstNodeType::GenericExpr => (node as *expr::GenericExpr).fmt(fmt, self);
-            AstNodeType::ScopedExpr => (node as *expr::ScopedExpr).fmt(fmt, self);
+            AstNodeType::GenericExpr => (node as *expr::GenericExpr).fmt(fmt, self, indent);
+            AstNodeType::ScopedExpr => (node as *expr::ScopedExpr).fmt(fmt, self, indent);
             // other
             AstNodeType::Poison => (node as *AstPoison).fmt(fmt);
             else => @abort("unsupported node type: %llu\n", type);
@@ -215,7 +215,7 @@ pub struct RootNode {
 
     pub fn fmt(self: *const RootNode, fmt: *Formatter, ast: *const Ast) void {
         if (self.start.is_some()) {
-            ast.display_node(fmt, self.start._private_index);
+            ast.display_node(fmt, self.start._private_index, 0 as u64);
         } else {
             fmt.unsafe_cstr_ptr("[empty]");
         }
@@ -233,10 +233,10 @@ pub struct Parameter {
         return self;
     }
 
-    pub fn fmt(self: *const Parameter, fmt: *Formatter, ast: *const Ast) void {
-        ast.display_node(fmt, self.pattern._private_index);
+    pub fn fmt(self: *const Parameter, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        ast.display_node(fmt, self.pattern._private_index, indent);
         fmt.unsafe_cstr_ptr(": ");
-         ast.display_node(fmt, self.ty._private_index);
+         ast.display_node(fmt, self.ty._private_index, indent);
     }
 }
 

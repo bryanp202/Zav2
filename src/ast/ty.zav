@@ -110,13 +110,13 @@ pub struct PtrType {
         return self;
     }
 
-    pub fn fmt(self: *const PtrType, fmt: *Formatter, ast: *const Ast, index: u64) void {
+    pub fn fmt(self: *const PtrType, fmt: *Formatter, ast: *const Ast, index: u64, indent: u64) void {
         if (self.mutable) {
             fmt.unsafe_cstr_ptr("*");
         } else {
             fmt.unsafe_cstr_ptr("*const ");
         }
-        ast.display_next_node(fmt, index, @sizeof(self.*));
+        ast.display_next_node(fmt, index, @sizeof(self.*), indent);
     }
 }
 
@@ -137,11 +137,11 @@ pub struct ArrayType {
         return self;
     }
 
-    pub fn fmt(self: *const ArrayType, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const ArrayType, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr("[");
-        ast.display_node(fmt, self.len._private_index);
+        ast.display_node(fmt, self.len._private_index, indent);
         fmt.unsafe_cstr_ptr("]");
-        ast.display_node(fmt, self.child._private_index);
+        ast.display_node(fmt, self.child._private_index, indent);
     }
 }
 
@@ -167,17 +167,17 @@ pub struct FnType {
         return self;
     }
 
-    pub fn fmt(self: *const FnType, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const FnType, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr("fn(");
         if (self.param_count >= 1) {
-            ast.display_node(fmt, ast.extra.items[self.params._private_index]);
+            ast.display_node(fmt, ast.extra.items[self.params._private_index], indent);
             for (1..self.param_count, &ast.extra.items[self.params._private_index + 1]) |_, param| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, param.*);
+                ast.display_node(fmt, param.*, indent);
             }
         }
         fmt.unsafe_cstr_ptr(")");
-        ast.display_node(fmt, self.ret_type._private_index);
+        ast.display_node(fmt, self.ret_type._private_index, indent);
     }
 }
 
@@ -196,13 +196,13 @@ pub struct TupleType {
         return self;
     }
 
-    pub fn fmt(self: *const TupleType, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const TupleType, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr("(");
         if (self.field_count >= 1) {
-            ast.display_node(fmt, ast.extra.items[self.fields._private_index]);
+            ast.display_node(fmt, ast.extra.items[self.fields._private_index], indent);
             for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, param| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, param.*);
+                ast.display_node(fmt, param.*, indent);
             }
         }
         fmt.unsafe_cstr_ptr(")");
@@ -251,14 +251,14 @@ pub struct GenericType {
         return self;
     }
 
-    pub fn fmt(self: *const GenericType, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const GenericType, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.slice(ast.interner.get(self.sym));
         fmt.unsafe_cstr_ptr("[");
         if (self.generic_count >= 1) {
-            ast.display_node(fmt, ast.extra.items[self.generics._private_index]);
+            ast.display_node(fmt, ast.extra.items[self.generics._private_index], indent);
             for (1..self.generic_count, &ast.extra.items[self.generics._private_index + 1]) |_, generic| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, generic.*);
+                ast.display_node(fmt, generic.*, indent);
             }
         }
         fmt.unsafe_cstr_ptr("]");
@@ -285,14 +285,14 @@ pub struct ScopedType {
         return self;
     }
 
-    pub fn fmt(self: *const ScopedType, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const ScopedType, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         if (self.absolute) {
             fmt.unsafe_cstr_ptr("::");
         }
-        ast.display_node(fmt, ast.extra.items[self.scopes._private_index]);
+        ast.display_node(fmt, ast.extra.items[self.scopes._private_index], indent);
         for (1..self.scope_count, &ast.extra.items[self.scopes._private_index + 1]) |_, type| {
             fmt.unsafe_cstr_ptr("::");
-            ast.display_node(fmt, type.*);   
+            ast.display_node(fmt, type.*, indent);   
         }
     }
 }

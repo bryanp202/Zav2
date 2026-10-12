@@ -45,14 +45,14 @@ pub struct DestructPattern {
         return self;
     }
 
-    pub fn fmt(self: *const DestructPattern, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const DestructPattern, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr("{");
         if (self.field_count > 0) {
             const first_field = &ast.extra.items[self.fields._private_index] as *DestructPatternField;
-            first_field.fmt(fmt, ast);
+            first_field.fmt(fmt, ast, indent);
             for (1..self.field_count, &first_field[1]) |_, field| {
                 fmt.unsafe_cstr_ptr(", ");
-                (field as *DestructPatternField).fmt(fmt, ast);
+                (field as *DestructPatternField).fmt(fmt, ast, indent);
             }
             if (self.ignore_rest) fmt.unsafe_cstr_ptr(", ..");
         } else if (self.ignore_rest) fmt.unsafe_cstr_ptr("..");
@@ -77,13 +77,13 @@ pub struct ArrayPattern {
         return self;
     }
 
-    pub fn fmt(self: *const ArrayPattern, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const ArrayPattern, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr("[");
         if (self.entry_count > 0) {
-            ast.display_node(fmt, ast.extra.items[self.entries._private_index]);
+            ast.display_node(fmt, ast.extra.items[self.entries._private_index], indent);
             for (1..self.entry_count, &ast.extra.items[self.entries._private_index + 1]) |_, entry| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, entry.*);
+                ast.display_node(fmt, entry.*, indent);
             }
             if (self.ignore_rest) fmt.unsafe_cstr_ptr(", ..");
         } else if (self.ignore_rest) fmt.unsafe_cstr_ptr("..");
@@ -110,13 +110,13 @@ pub struct TuplePattern {
         return self;
     }
 
-    pub fn fmt(self: *const TuplePattern, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const TuplePattern, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr("(");
         if (self.field_count > 0) {
-            ast.display_node(fmt, ast.extra.items[self.fields._private_index]);
+            ast.display_node(fmt, ast.extra.items[self.fields._private_index], indent);
             for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, field.*);
+                ast.display_node(fmt, field.*, indent);
             }
             if (self.ignore_rest) fmt.unsafe_cstr_ptr(", ..");
         } else if (self.ignore_rest) fmt.unsafe_cstr_ptr("..");
@@ -137,11 +137,11 @@ pub struct DestructPatternField {
         return self;
     }
 
-    pub fn fmt(self: *const DestructPatternField, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const DestructPatternField, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.slice(ast.interner.get(self.sym));
         if (self.rename_pattern.is_some()) {
             fmt.unsafe_cstr_ptr(": ");
-            ast.display_node(fmt, self.rename_pattern._private_index);
+            ast.display_node(fmt, self.rename_pattern._private_index, indent);
         }
     }
 }

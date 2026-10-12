@@ -32,12 +32,12 @@ pub struct IfExpr {
         return self;
     }
 
-    pub fn fmt(self: *const IfExpr, fmt: *Formatter, ast: *const Ast) void {
-        ast.display_node(fmt, self.cond._private_index);
+    pub fn fmt(self: *const IfExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        ast.display_node(fmt, self.cond._private_index, indent);
         fmt.unsafe_cstr_ptr("?");
-        ast.display_node(fmt, self.then_branch._private_index);
+        ast.display_node(fmt, self.then_branch._private_index, indent);
         fmt.unsafe_cstr_ptr(":");
-        ast.display_node(fmt, self.else_branch._private_index);
+        ast.display_node(fmt, self.else_branch._private_index, indent);
     }
 }
 
@@ -58,8 +58,8 @@ pub struct BinaryExpr {
         return self;
     }
 
-    pub fn fmt(self: *const BinaryExpr, fmt: *Formatter, ast: *const Ast) void {
-        ast.display_node(fmt, self.lhs._private_index);
+    pub fn fmt(self: *const BinaryExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        ast.display_node(fmt, self.lhs._private_index, indent);
         var op: *const u8 = undefined;
         switch (self.op) {
             BinaryOp::LogicalOr => op = "or";
@@ -84,7 +84,7 @@ pub struct BinaryExpr {
         fmt.unsafe_cstr_ptr(" ");
         fmt.unsafe_cstr_ptr(op);
         fmt.unsafe_cstr_ptr(" ");
-        ast.display_node(fmt, self.rhs._private_index);
+        ast.display_node(fmt, self.rhs._private_index, indent);
     }
 }
 
@@ -105,7 +105,7 @@ pub struct UnaryExpr {
         return self;
     }
 
-    pub fn fmt(self: *const UnaryExpr, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const UnaryExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         var op: *const u8 = undefined;
         switch (self.op) {
             UnaryOp::Invert => op = "~";
@@ -113,13 +113,13 @@ pub struct UnaryExpr {
             UnaryOp::Bang => op = "!";
             UnaryOp::Ref => op = "&";
             UnaryOp::Deref => {
-                ast.display_node(fmt, self.operand._private_index);
+                ast.display_node(fmt, self.operand._private_index, indent);
                 fmt.unsafe_cstr_ptr(".*");
                 return;
             }
         }
         fmt.unsafe_cstr_ptr(op);
-        ast.display_node(fmt, self.operand._private_index);
+        ast.display_node(fmt, self.operand._private_index, indent);
     }
 }
  
@@ -139,21 +139,21 @@ pub struct TrailingExpr {
         return self;
     }
 
-    pub fn fmt(self: *const TrailingExpr, fmt: *Formatter, ast: *const Ast) void {
-        ast.display_node(fmt, self.operand._private_index);
+    pub fn fmt(self: *const TrailingExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        ast.display_node(fmt, self.operand._private_index, indent);
         var op: *const u8 = undefined;
         switch (self.op) {
             TrailingOp::Field => op = ".";
             TrailingOp::Conversion => op = " as ";
             TrailingOp::Index => {
                 fmt.unsafe_cstr_ptr("[");
-                ast.display_node(fmt, self.trailing._private_index);
+                ast.display_node(fmt, self.trailing._private_index, indent);
                 fmt.unsafe_cstr_ptr("]");
                 return;
             }
         }
         fmt.unsafe_cstr_ptr(op);
-        ast.display_node(fmt, self.trailing._private_index);
+        ast.display_node(fmt, self.trailing._private_index, indent);
     }
 }
 
@@ -180,8 +180,8 @@ pub struct TupleIndexExpr {
         return self;
     }
 
-    pub fn fmt(self: *const TupleIndexExpr, fmt: *Formatter, ast: *const Ast) void {
-        ast.display_node(fmt, self.operand._private_index);
+    pub fn fmt(self: *const TupleIndexExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        ast.display_node(fmt, self.operand._private_index, indent);
         fmt.unsafe_cstr_ptr("#");
         fmt.slice(ast.interner.get(self.index_sym));
     }
@@ -206,14 +206,14 @@ pub struct CallExpr {
         return self;
     }
 
-    pub fn fmt(self: *const CallExpr, fmt: *Formatter, ast: *const Ast) void {
-        ast.display_node(fmt, self.operand._private_index);
+    pub fn fmt(self: *const CallExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        ast.display_node(fmt, self.operand._private_index, indent);
         fmt.unsafe_cstr_ptr("(");
         if (self.arg_count > 0) {
-            ast.display_node(fmt, ast.extra.items[self.args._private_index ]);
+            ast.display_node(fmt, ast.extra.items[self.args._private_index ], indent);
             for (1..self.arg_count, &ast.extra.items[self.args._private_index + 1]) |_, arg| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, arg.*);
+                ast.display_node(fmt, arg.*, indent);
             }
         }
         fmt.unsafe_cstr_ptr(")");
@@ -239,14 +239,14 @@ pub struct NativeExpr {
         return self;
     }
 
-    pub fn fmt(self: *const NativeExpr, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const NativeExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.slice(ast.interner.get(self.name));
         fmt.unsafe_cstr_ptr("(");
         if (self.arg_count > 0) {
-            ast.display_node(fmt, ast.extra.items[self.args._private_index ]);
+            ast.display_node(fmt, ast.extra.items[self.args._private_index ], indent);
             for (1..self.arg_count, &ast.extra.items[self.args._private_index + 1]) |_, arg| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, arg.*);
+                ast.display_node(fmt, arg.*, indent);
             }
         }
         fmt.unsafe_cstr_ptr(")");
@@ -280,23 +280,23 @@ pub struct LambdaExpr {
         return self;
     }
 
-    pub fn fmt(self: *const LambdaExpr, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const LambdaExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr("|");
         if (self.param_count > 0) {
             const first_param = &ast.extra.items[self.params._private_index] as *Parameter;
-            first_param.fmt(fmt, ast);
-            for (1..self.param_count, &ast.extra.items[self.params._private_index + 1]) |_, param| {
+            first_param.fmt(fmt, ast, indent);
+            for (1..self.param_count, &first_param[1]) |_, param| {
                 fmt.unsafe_cstr_ptr(", ");
-                (param as *Parameter).fmt(fmt, ast);
+                param.fmt(fmt, ast, indent);
             }
         }
         fmt.unsafe_cstr_ptr("| ");
         if (self.ret_type.is_some()) {
             fmt.unsafe_cstr_ptr("-> ");
-            ast.display_node(fmt, self.ret_type._private_index);
+            ast.display_node(fmt, self.ret_type._private_index, indent);
             fmt.unsafe_cstr_ptr(" ");
         }
-        ast.display_node(fmt, self.body._private_index);
+        ast.display_node(fmt, self.body._private_index, indent);
     }
 }
 
@@ -318,17 +318,17 @@ pub struct ArrayExpr {
         return self;
     }
 
-    pub fn fmt(self: *const ArrayExpr, fmt: *Formatter, ast: *const Ast, index: u64) void {
+    pub fn fmt(self: *const ArrayExpr, fmt: *Formatter, ast: *const Ast, index: u64, indent: u64) void {
         fmt.unsafe_cstr_ptr("[");
         fmt.unsafe_cstr_ptr("]");
-        ast.display_next_node(fmt, index, @sizeof(self.*));
+        ast.display_next_node(fmt, index, @sizeof(self.*), indent);
         fmt.unsafe_cstr_ptr("[");
         const len = (self.len_upper << 32 | self.len_lower) as u64;
         if (len > 0) {
-            ast.display_node(fmt, ast.extra.items[self.entries._private_index ]);
+            ast.display_node(fmt, ast.extra.items[self.entries._private_index], indent);
             for (1..len, &ast.extra.items[self.entries._private_index + 1]) |_, entry| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, entry.*);
+                ast.display_node(fmt, entry.*, indent);
             }
         }
         fmt.unsafe_cstr_ptr("]");
@@ -353,17 +353,16 @@ pub struct StructExpr {
         return self;
     }
 
-    pub fn fmt(self: *const StructExpr, fmt: *Formatter, ast: *const Ast) void {
-        ast.display_node(fmt, self.name_expr._private_index);
+    pub fn fmt(self: *const StructExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        ast.display_node(fmt, self.name_expr._private_index, indent);
         fmt.unsafe_cstr_ptr(" {");
         if (self.field_count > 0) {
             fmt.unsafe_cstr_ptr(" ");
-            const first_field = &ast.extra.items[self.fields._private_index];
-            (first_field as *StructExprField).fmt(fmt, ast);
-            for (1..self.field_count) |i| {
+            const first_field = &ast.extra.items[self.fields._private_index] as *StructExprField;
+            first_field.fmt(fmt, ast, indent);
+            for (1..self.field_count, &first_field[1]) |_, field| {
                 fmt.unsafe_cstr_ptr(", ");
-                const field = &ast.extra.items[self.fields._private_index + i * @sizeof(0 as StructExprField) / 4];
-                (field as *StructExprField).fmt(fmt, ast);
+                field.fmt(fmt, ast, indent);
             }
             fmt.unsafe_cstr_ptr(" ");
         }
@@ -388,13 +387,13 @@ pub struct TupleExpr {
         return self;
     }
 
-    pub fn fmt(self: *const TupleExpr, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const TupleExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr(".(");
         if (self.field_count >= 1) {
-            ast.display_node(fmt, ast.extra.items[self.fields._private_index]);
+            ast.display_node(fmt, ast.extra.items[self.fields._private_index], indent);
             for (1..self.field_count, &ast.extra.items[self.fields._private_index + 1]) |_, field| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, field.*);
+                ast.display_node(fmt, field.*, indent);
             }
         }
         fmt.unsafe_cstr_ptr(")");
@@ -463,14 +462,14 @@ pub struct GenericExpr {
         return self;
     }
 
-    pub fn fmt(self: *const GenericExpr, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const GenericExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.slice(ast.interner.get(self.sym));
         fmt.unsafe_cstr_ptr("::[");
         if (self.generic_count >= 1) {
-            ast.display_node(fmt, ast.extra.items[self.generics._private_index]);
+            ast.display_node(fmt, ast.extra.items[self.generics._private_index], indent);
             for (1..self.generic_count, &ast.extra.items[self.generics._private_index + 1]) |_, generic| {
                 fmt.unsafe_cstr_ptr(", ");
-                ast.display_node(fmt, generic.*);
+                ast.display_node(fmt, generic.*, indent);
             }
         }
         fmt.unsafe_cstr_ptr("]");
@@ -497,14 +496,14 @@ pub struct ScopedExpr {
         return self;
     }
 
-    pub fn fmt(self: *const ScopedExpr, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const ScopedExpr, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         if (self.absolute) {
             fmt.unsafe_cstr_ptr("::");
         }
-        ast.display_node(fmt, ast.extra.items[self.scopes._private_index]);
+        ast.display_node(fmt, ast.extra.items[self.scopes._private_index], indent);
         for (1..self.scope_count, &ast.extra.items[self.scopes._private_index + 1]) |_, type| {
             fmt.unsafe_cstr_ptr("::");
-            ast.display_node(fmt, type.*);   
+            ast.display_node(fmt, type.*, indent);   
         }
     }
 }
@@ -522,10 +521,10 @@ pub struct StructExprField {
         return self;
     }
 
-    pub fn fmt(self: *const StructExprField, fmt: *Formatter, ast: *const Ast) void {
+    pub fn fmt(self: *const StructExprField, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.slice(ast.interner.get(self.sym));
         fmt.unsafe_cstr_ptr(": ");
-        ast.display_node(fmt, self.expr._private_index);
+        ast.display_node(fmt, self.expr._private_index, indent);
     }
 }
 
