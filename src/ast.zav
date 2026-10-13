@@ -222,6 +222,11 @@ pub struct RootNode {
     }
 }
 
+pub struct Identifier {
+    span: SpanIndex;
+    sym: Symbol;
+}
+
 pub struct Parameter {
     pattern: AstNodeIndex;
     ty: AstNodeIndex;

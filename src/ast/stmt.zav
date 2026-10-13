@@ -1,86 +1,358 @@
+use ::std::fmt::Formatter;
+
+use super::Ast;
 use super::AstNodeType;
 use super::AstNodeIndex;
 use super::OptionalAstNodeIndex;
 use super::AstExtraIndex;
 use super::SpanIndex;
+use super::Identifier;
+
+fn stmt_is_block(ast: *const Ast, index: u64) bool {
+    return (&ast.nodes.items[index] as *const ItemStmt).type == AstNodeType::BlockStmt;
+}
+
+fn fmt_indent(fmt: *Formatter, indent: u64) void {
+    for (0..indent) |_| {
+        fmt.unsafe_cstr_ptr("    ");
+    }
+}
 
 pub struct ItemStmt {
     type: AstNodeType;
+    pad: u16;
     // item: AstNodeIndex (always +1);
+
+    pub fn new() ItemStmt {
+        var self: ItemStmt = undefined;
+        self.type = AstNodeType::ItemStmt;
+        self.pad = 0 as u16;
+        return self;
+    }
+
+    pub fn fmt(self: *const ItemStmt, fmt: *Formatter, ast: *const Ast, index: u64, indent: u64) void {
+        ast.display_next_node(fmt, index, @sizeof(self.*), indent);
+    }
 }
 
 pub struct DeferStmt {
     type: AstNodeType;
+    pad: u8;
     err: bool;
-    // expr: AstNodeIndex (always +1);
+    expr: AstNodeIndex;
+
+    pub fn new(err: bool, expr: AstNodeIndex) DeferStmt {
+        var self: DeferStmt = undefined;
+        self.type = AstNodeType::DeferStmt;
+        self.pad = 0 as u8;
+        self.err = err;
+        self.expr = expr;
+        return self;
+    }
+
+    pub fn fmt(self: *const DeferStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.unsafe_cstr_ptr(self.err ? "edefer " as *const u8 : "defer " as *const u8);
+        ast.display_node(fmt, self.expr._private_index, indent);
+        fmt.unsafe_cstr_ptr(";");
+    }
 }
 
 pub struct DeclStmt {
     type: AstNodeType;
+    pad: u8;
     mutable: bool;
-    pattern: AstNodeIndex;
+    // pattern: AstNodeIndex (always +1);
     decl_type: OptionalAstNodeIndex;
-    // expr: AstNodeIndex (always +1);
+    expr: OptionalAstNodeIndex;
+
+    pub fn new(mutable: bool, decl_type: OptionalAstNodeIndex, expr: OptionalAstNodeIndex) DeclStmt {
+        var self: DeclStmt = undefined;
+        self.type = AstNodeType::DeclStmt;
+        self.pad = 0 as u8;
+        self.mutable = mutable;
+        self.decl_type = decl_type;
+        self.expr = expr;
+        return self;
+    }
+
+    pub fn fmt(self: *const DeclStmt, fmt: *Formatter, ast: *const Ast, index: u64, indent: u64) void {
+        fmt.unsafe_cstr_ptr(self.mutable ? "var " as *const u8 : "const " as *const u8);
+        ast.display_next_node(fmt, index, @sizeof(self.*), indent);
+        if (self.decl_type.is_some()) {
+            fmt.unsafe_cstr_ptr(": ");
+            ast.display_node(fmt, self.decl_type._private_index, indent);
+        }
+        fmt.unsafe_cstr_ptr(" = ");
+        if (self.expr.is_some()) {
+            ast.display_node(fmt, self.expr._private_index, indent);
+        } else {
+            fmt.unsafe_cstr_ptr("undefined");
+        }
+        fmt.unsafe_cstr_ptr(";");
+    }
 }
 
 pub struct AssignStmt {
     type: AstNodeType;
     assign_op: AssignOp;
-    // expr: AstNodeIndex (always +1);
+    lhs: AstNodeIndex;
+    rhs: AstNodeIndex;
+
+    pub fn new(assign_op: AssignOp, lhs: AstNodeIndex, rhs: AstNodeIndex) AssignStmt {
+        var self: AssignStmt = undefined;
+        self.assign_op = assign_op;
+        self.lhs = lhs;
+        self.rhs = rhs;
+        return self;
+    }
+
+    pub fn fmt(self: *const AssignStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        ast.display_node(fmt, self.lhs._private_index, indent);
+        var op: *const u8 = undefined;
+        switch (self.assign_op) {
+            AssignOp::BitOr => op = "|";
+            AssignOp::BitXor => op = "^";
+            AssignOp::BitAnd => op = "&";
+            AssignOp::ShiftR => op = ">>";
+            AssignOp::ShiftL => op = "<<";
+            AssignOp::TermAdd => op = "+";
+            AssignOp::TermSub => op = "-";
+            AssignOp::FactorMul => op = "*";
+            AssignOp::FactorDiv => op = "/";
+            AssignOp::FactorMod => op = "%";
+            else => @abort("invalid AssignOp: %llu\n", self.assign_op);
+        }
+        fmt.unsafe_cstr_ptr(" ");
+        fmt.unsafe_cstr_ptr(op);
+        fmt.unsafe_cstr_ptr("= ");
+        ast.display_node(fmt, self.rhs._private_index, indent);
+        fmt.unsafe_cstr_ptr(";");
+    }
 }
 
 pub struct ExprStmt {
     type: AstNodeType;
-    // expr: AstNodeIndex (always +1);
+    pad: u16;
+    expr: AstNodeIndex;
+
+    pub fn new(expr: AstNodeIndex) ExprStmt {
+        var self: ExprStmt = undefined;
+        self.pad = 0 as u16;
+        self.expr = expr;
+        return self;
+    }
+
+    pub fn fmt(self: *const ExprStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        ast.display_node(fmt, self.expr._private_index, indent);
+        fmt.unsafe_cstr_ptr(";");
+    }
 }
 
 pub struct ReturnStmt {
     type: AstNodeType;
+    pad: u8;
     err: bool;
-    // expr: AstNodeIndex (always +1);
+    expr: OptionalAstNodeIndex;
+
+    pub fn new(err: bool, expr: OptionalAstNodeIndex) ReturnStmt {
+        var self: ReturnStmt = undefined;
+        self.type = AstNodeType::ReturnStmt;
+        self.pad = 0 as u8;
+        self.err = err;
+        self.expr = expr;
+        return self;
+    }
+
+    pub fn fmt(self: *const ReturnStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.unsafe_cstr_ptr(self.err ? "ereturn" as *const u8 : "return" as *const u8);
+        if (self.expr.is_some()) {
+            fmt.unsafe_cstr_ptr(" ");
+            ast.display_node(fmt, self.expr._private_index, indent);
+        }
+        fmt.unsafe_cstr_ptr(";");
+    }
 }
 
 pub struct IfStmt {
     type: AstNodeType;
-    // cond: AstNodeIndex (always +1);
+    pad: u16;
+    cond: AstNodeIndex;
     then_branch: AstNodeIndex;
     else_branch: OptionalAstNodeIndex;
+
+    pub fn new(cond: AstNodeIndex, then_branch: AstNodeIndex, else_branch: OptionalAstNodeIndex) IfStmt {
+        var self: IfStmt = undefined;
+        self.type = AstNodeType::IfStmt;
+        self.pad = 0 as u16;
+        self.cond = cond;
+        self.then_branch = then_branch;
+        self.else_branch = else_branch;
+        return self;
+    }
+
+    pub fn fmt(self: *const IfStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.unsafe_cstr_ptr("if (");
+        ast.display_node(fmt, self.cond._private_index, indent);
+        fmt.unsafe_cstr_ptr(")");
+
+        const sub_stmt_indent = indent + 1 as u8;
+        if (stmt_is_block(ast, self.then_branch._private_index)) {
+            fmt.unsafe_cstr_ptr(" ");
+        } else {
+            fmt.newline();
+            fmt_indent(fmt, sub_stmt_indent);
+        }
+        ast.display_node(fmt, self.then_branch._private_index, sub_stmt_indent);
+
+        if (self.else_branch.is_some()) {
+            if (stmt_is_block(ast, self.else_branch._private_index)) {
+                fmt.unsafe_cstr_ptr(" else ");
+            } else {
+                fmt.newline();
+                fmt_indent(fmt, indent);
+                fmt.unsafe_cstr_ptr("else");
+                fmt.newline();
+                fmt_indent(fmt, sub_stmt_indent);
+            }
+            ast.display_node(fmt, self.then_branch._private_index, sub_stmt_indent);
+        }
+    }
 }
 
 pub struct WhileStmt {
     type: AstNodeType;
-    // cond: AstNodeIndex (always +1);
+    cond: AstNodeIndex;
     body: AstNodeIndex;
-    loop_stmt: AstNodeIndex;
+    loop_stmt: OptionalAstNodeIndex;
+
+    pub fn new(cond: AstNodeIndex, body: AstNodeIndex, loop_stmt: OptionalAstNodeIndex) WhileStmt {
+        var self: WhileStmt = undefined;
+        self.cond = cond;
+        self.body = body;
+        self.loop_stmt = loop_stmt;
+        return self;
+    }
+
+    pub fn fmt(self: *const WhileStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.unsafe_cstr_ptr("while (");
+        ast.display_node(fmt, self.cond._private_index, indent);
+        fmt.unsafe_cstr_ptr(")");
+
+        const sub_stmt_indent = indent + 1 as u8;
+        const body_is_block = stmt_is_block(ast, self.body._private_index);
+        if (body_is_block) {
+            fmt.unsafe_cstr_ptr(" ");
+        } else {
+            fmt.newline();
+            fmt_indent(fmt, sub_stmt_indent);
+        }
+        ast.display_node(fmt, self.body._private_index, sub_stmt_indent);
+
+        if (body_is_block) {
+            fmt.unsafe_cstr_ptr(" loop ");
+        } else {
+            fmt.newline();
+            fmt_indent(fmt, indent);
+            fmt.unsafe_cstr_ptr("loop ");
+        }
+        ast.display_node(fmt, self.loop_stmt._private_index, sub_stmt_indent);
+    }
 }
 
 pub struct ForStmt {
     type: AstNodeType;
-    expr_count: u16; // 2 means only end_expr and start_expr
-    expr_index: AstExtraIndex; // list of AstNode (start_expr, end_expr, ..ptr_expr)
-    binding_count: u16; // 1 means only inc binding
-    binding_index: AstExtraIndex; // list of Identifier (incr, ..ptr_binding)
+    expr_count: u8; // 2 means only end_expr and start_expr
+    binding_count: u8; // 1 means only inc binding
+    exprs: AstExtraIndex; // list of AstNode (start_expr, end_expr, ..ptr_expr)
+    bindings: AstExtraIndex; // list of Identifier (incr, ..ptr_binding)
     body: AstNodeIndex;
+
+    pub fn new(
+        expr_count: u8,
+        binding_count: u8,
+        exprs: AstExtraIndex,
+        bindings: AstExtraIndex,
+        body: AstNodeIndex,
+    ) ForStmt {
+        var self: ForStmt = undefined;
+        self.type = AstNodeType::ForStmt;
+        self.expr_count = expr_count;
+        self.binding_count = binding_count;
+        self.exprs = exprs;
+        self.bindings = bindings;
+        self.body = body;
+        return self;
+    }
+
+    pub fn fmt(self: *const ForStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.unsafe_cstr_ptr("for (");
+        const first_expr_ptr = &ast.extra.items[self.exprs._private_index];
+        ast.display_node(fmt, first_expr_ptr[0], indent);
+        fmt.unsafe_cstr_ptr(".. ");
+        ast.display_node(fmt, first_expr_ptr[1], indent);
+        for (2..self.expr_count, &first_expr_ptr[2]) |_, expr| {
+            fmt.unsafe_cstr_ptr(", ");
+            ast.display_node(fmt, expr.*, indent);
+        }
+        fmt.unsafe_cstr_ptr(") |");
+
+        const first_binding_ptr = &ast.extra.items[self.bindings._private_index] as *Identifier;
+        fmt.slice(ast.interner.get(first_binding_ptr.sym));
+        for (1..self.binding_count, &first_binding_ptr[1]) |_, binding| {
+            fmt.unsafe_cstr_ptr(", ");
+            fmt.slice(ast.interner.get(binding.sym));
+        }
+        fmt.unsafe_cstr_ptr("|");
+
+        const sub_stmt_indent = indent + 1 as u8;
+        if (stmt_is_block(ast, self.body._private_index)) {
+            fmt.unsafe_cstr_ptr(" ");
+        } else {
+            fmt.newline();
+            fmt_indent(fmt, sub_stmt_indent);
+        }
+        ast.display_node(fmt, self.body._private_index, sub_stmt_indent);
+    }
 }
 
 pub struct BlockStmt {
     type: AstNodeType;
+    pad: u16;
     len: u32;
     stmts: AstExtraIndex; // list of AstNodeIndex (stmt)
+
+    pub fn new(len: u32, stmts: AstExtraIndex) BlockStmt {
+        var self: BlockStmt = undefined;
+        self.type = AstNodeType::BlockStmt;
+        self.pad = 0 as u16;
+        self.len = len;
+        self.stmts = stmts;
+        return self;
+    }
+
+    pub fn fmt(self: *const BlockStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.unsafe_cstr_ptr("{");
+        if (self.len != 0) {
+            fmt.newline();
+            const sub_stmt_indent = indent + 1 as u8;
+            for (0..self.len, &ast.extra.items[self.stmts._private_index]) |_, stmt| {
+                fmt_indent(fmt, sub_stmt_indent);
+                ast.display_node(fmt, stmt.*, sub_stmt_indent);
+                fmt.newline();
+            }
+        }
+        fmt.unsafe_cstr_ptr("}");
+    }
 }
 
 pub enum AssignOp {
-    CompareE,
-    CompareNE,
-    CompareL,
-    CompareLE,
-    CompareG,
-    CompareGE,
     BitOr,
     BitXor,
     BitAnd,
     ShiftR,
     ShiftL,
+    TermAdd,
+    TermSub,
     FactorMul,
     FactorDiv,
     FactorMod,

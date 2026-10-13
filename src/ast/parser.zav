@@ -289,8 +289,7 @@ pub struct Parser {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
 
-        const { _0: fields, _1: field_chunks } = self.store_extra(field_start);
-        const field_count = field_chunks / (@sizeof(0 as expr::StructExprField) / 4 as u32);
+        const { _0: fields, _1: field_count } = self.store_extra_sized(field_start, @sizeof(0 as expr::StructExprField));
         if (field_count > 65535) {
             const path_slice = self.path.as_slice();
             @abort("Struct expr field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
@@ -368,8 +367,7 @@ pub struct Parser {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
 
-        const { _0: params, _1: param_chunks } = self.store_extra(param_start);
-        const param_count = param_chunks / (@sizeof(0 as ast::Parameter) / 4 as u32);
+        const { _0: params, _1: param_count } = self.store_extra_sized(param_start, @sizeof(0 as ast::Parameter));
         if (param_count > 255) {
             const path_slice = self.path.as_slice();
             @abort("Generic expr param count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
@@ -877,8 +875,7 @@ pub struct Parser {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
 
-        const {_0: field_index, _1: field_chunks } = self.store_extra(field_start);
-        const field_count = field_chunks / (@sizeof(0 as ast::pattern::DestructPatternField) / 4);
+        const {_0: field_index, _1: field_count } = self.store_extra_sized(field_start, @sizeof(0 as ast::pattern::DestructPatternField));
         if (field_count > 255) {
             const path_slice = self.path.as_slice();
             @abort("Destruct pattern field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
@@ -1395,5 +1392,12 @@ pub struct Parser {
         index._private_index = self.ast.extra.len as u32;
         self.ast.extra.push_slice(extra);
         return Tuple2::[AstExtraIndex, u64]::new(index, n);
+    }
+
+    // `size` is in bytes.
+    // Returns the count of `size` chunks.
+    fn store_extra_sized(self: *Parser, start: u64, size: u64) Tuple2[AstExtraIndex, u64] {
+        const { _0: extra, _1: chunk_count } = self.store_extra(start);
+        return Tuple2::[AstExtraIndex, u64]::new(extra, chunk_count / (size / 4 as u64));
     }
 }
