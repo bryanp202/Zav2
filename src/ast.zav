@@ -61,6 +61,12 @@ pub struct Ast {
         root_node.fmt(fmt, self);
     }
 
+    pub fn fmt_indent(fmt: *Formatter, indent: u64) void {
+        for (0..indent) |_| {
+            fmt.unsafe_cstr_ptr("    ");
+        }
+    }
+
     pub fn display_next_node(self: *const Ast, fmt: *Formatter, index: u64, size: u64, indent: u64) void {
         self.display_node(fmt, index + size / 4 as u8, indent);
     } 
@@ -70,8 +76,8 @@ pub struct Ast {
         const type = node.* as AstNodeType;
         switch (type) {
             // type
-            AstNodeType::VoidType => fmt.unsafe_cstr_ptr("void");
-            AstNodeType::BoolType => fmt.unsafe_cstr_ptr("bool");
+            AstNodeType::VoidType => (node as *ty::VoidType).fmt(fmt);
+            AstNodeType::BoolType => (node as *ty::BoolType).fmt(fmt);
             AstNodeType::IntType => (node as *ty::IntType).fmt(fmt);
             AstNodeType::UintType => (node as *ty::UintType).fmt(fmt);
             AstNodeType::FloatType => (node as *ty::FloatType).fmt(fmt);
@@ -103,6 +109,34 @@ pub struct Ast {
             AstNodeType::IdentExpr => (node as *expr::IdentExpr).fmt(fmt, self);
             AstNodeType::GenericExpr => (node as *expr::GenericExpr).fmt(fmt, self, indent);
             AstNodeType::ScopedExpr => (node as *expr::ScopedExpr).fmt(fmt, self, indent);
+            // stmt
+            AstNodeType::ItemStmt => (node as *stmt::ItemStmt).fmt(fmt, self, index, indent);
+            AstNodeType::DeferStmt => (node as *stmt::DeferStmt).fmt(fmt, self, indent);
+            AstNodeType::DeclStmt => (node as *stmt::DeclStmt).fmt(fmt, self, index, indent);
+            AstNodeType::AssignStmt => (node as *stmt::AssignStmt).fmt(fmt, self, indent);
+            AstNodeType::ExprStmt => (node as *stmt::ExprStmt).fmt(fmt, self, indent);
+            AstNodeType::ReturnStmt => (node as *stmt::ReturnStmt).fmt(fmt, self, indent);
+            AstNodeType::BreakStmt => (node as *stmt::BreakStmt).fmt(fmt);
+            AstNodeType::ContinueStmt => (node as *stmt::ContinueStmt).fmt(fmt);
+            AstNodeType::IfStmt => (node as *stmt::IfStmt).fmt(fmt, self, indent);
+            AstNodeType::WhileStmt => (node as *stmt::WhileStmt).fmt(fmt, self, indent);
+            AstNodeType::ForStmt => (node as *stmt::ForStmt).fmt(fmt, self, indent);
+            AstNodeType::BlockStmt => (node as *stmt::BlockStmt).fmt(fmt, self, indent);
+            AstNodeType::SwitchStmt => (node as *stmt::SwitchStmt).fmt(fmt, self, indent);
+            AstNodeType::SwitchBranchStmt => (node as *stmt::SwitchBranchStmt).fmt(fmt, self, indent);
+            // item
+            AstNodeType::DeclItem => (node as *item::DeclItem).fmt(fmt, self, indent);
+            AstNodeType::ModuleItem => (node as *item::ModuleItem).fmt(fmt, self);
+            AstNodeType::FnItem => (node as *item::FnItem).fmt(fmt, self, indent);
+            AstNodeType::StructItem => (node as *item::StructItem).fmt(fmt, self, indent);
+            AstNodeType::UnionItem => (node as *item::UnionItem).fmt(fmt, self, indent);
+            AstNodeType::EnumItem => (node as *item::EnumItem).fmt(fmt, self, indent);
+            // AstNodeType::UseItem => (node as *item::UseItem).fmt(fmt, self, indent);
+            /* sub items */
+            AstNodeType::StructureField => (node as *item::StructureField).fmt(fmt, self, indent);
+            // AstNodeType::UseTreeNode => (node as *item::).fmt(fmt, self, indent);
+            // AstNodeType::UseTreeBranch => (node as *item::).fmt(fmt, self, indent);
+            // AstNodeType::UseTreeLeaf => (node as *item::).fmt(fmt, self, indent);
             // other
             AstNodeType::Poison => (node as *AstPoison).fmt(fmt);
             else => @abort("unsupported node type: %llu\n", type);
@@ -225,6 +259,17 @@ pub struct RootNode {
 pub struct Identifier {
     span: SpanIndex;
     sym: Symbol;
+
+    pub fn new(span: SpanIndex, sym: Symbol) Identifier {
+        var self: Identifier = undefined;
+        self.span = span;
+        self.sym = sym;
+        return self;
+    }
+
+    pub fn fmt(self: *const Identifier, fmt: *Formatter, ast: *const Ast) void {
+        fmt.slice(ast.interner.get(self.sym));
+    }
 }
 
 pub struct Parameter {
@@ -271,10 +316,11 @@ pub enum AstNodeType {
     UnionItem,
     EnumItem,
     UseItem,
-    /* use tree */
-    UseTreeNode,
-    UseTreeBranch,
-    UseTreeLeaf,
+    /* sub items */
+    StructureField,
+    // UseTreeNode,
+    // UseTreeBranch,
+    // UseTreeLeaf,
 
     /* stmt: maybe all expr at somepoint */
     // special stmt
@@ -291,7 +337,8 @@ pub enum AstNodeType {
     WhileStmt,
     ForStmt,
     BlockStmt,
-    StmtSwitch,
+    SwitchStmt,
+    SwitchBranchStmt,
 
     /* expr */
     IfExpr,

@@ -1,65 +1,341 @@
+use ::std::fmt::Formatter;
+
+use super::Ast;
 use super::AstNodeType;
 use super::AstNodeIndex;
 use super::OptionalAstNodeIndex;
 use super::AstExtraIndex;
 use super::SpanIndex;
 use super::OptionalSpanIndex;
+use super::Identifier;
+use super::Parameter;
 use super::symbol::Symbol;
-
-pub enum Visibility {
-    Private,
-    Public,
-}
 
 pub struct DeclItem {
     type: AstNodeType;
-    visibility: Visibility;
+    public: bool;
+    mutable: bool;
     pattern: AstNodeIndex;
     ty: OptionalAstNodeIndex;
-    // expr: AstNodeIndex (always +1);
+    expr: OptionalAstNodeIndex;
+
+    pub fn new(
+        public: bool,
+        mutable: bool,
+        pattern: AstNodeIndex,
+        ty: OptionalAstNodeIndex,
+        expr: OptionalAstNodeIndex,
+    ) DeclItem {
+        var self: DeclItem = undefined;
+        self.type = AstNodeType::DeclItem;
+        self.public = public;
+        self.mutable = mutable;
+        self.pattern = pattern;
+        self.ty = ty;
+        self.expr = expr;
+        return self;
+    }
+
+    pub fn fmt(self: *const DeclItem, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        if (self.public) {
+            fmt.unsafe_cstr_ptr("pub ");
+        }
+        fmt.unsafe_cstr_ptr(self.mutable ? "var " as *const u8 : "const " as *const u8);
+        ast.display_node(fmt, self.pattern._private_index, indent);
+        if (self.ty.is_some()) {
+            fmt.unsafe_cstr_ptr(": ");
+            ast.display_node(fmt, self.ty._private_index, indent);
+        }
+        fmt.unsafe_cstr_ptr(" = ");
+        if (self.expr.is_some()) {
+            ast.display_node(fmt, self.expr._private_index, indent);
+        } else {
+            fmt.unsafe_cstr_ptr("undefined");
+        }
+        fmt.unsafe_cstr_ptr(";");
+    }
 }
 
 pub struct ModuleItem {
     type: AstNodeType;
-    visibility: Visibility;
-    sym: Symbol;
-    span: SpanIndex;
+    pad: u8;
+    public: bool;
+    name_span: SpanIndex;
+    name_sym: Symbol;
+
+    pub fn new(public: bool, name_span: SpanIndex, name_sym: Symbol) ModuleItem {
+        var self: ModuleItem = undefined;
+        self.type = AstNodeType::ModuleItem;
+        self.pad = 0 as u8;
+        self.public = public;
+        self.name_span = name_span;
+        self.name_sym = name_sym;
+        return self;
+    }
+
+    pub fn fmt(self: *const ModuleItem, fmt: *Formatter, ast: *const Ast) void {
+        if (self.public) {
+            fmt.unsafe_cstr_ptr("pub ");
+        }
+        fmt.unsafe_cstr_ptr("mod ");
+        fmt.slice(ast.interner.get(self.name_sym));
+        fmt.unsafe_cstr_ptr(";");
+    }
 }
 
 pub struct FnItem {
     type: AstNodeType;
-    visibility: Visibility;
-    name_sym: Symbol;
-    name_span: SpanIndex;
-    generic_count: u16;
+    public: bool;
+    generic_count: u8;
     param_count: u16;
-    generic_index: AstExtraIndex; // list of Identifier
-    param_index: AstExtraIndex; // list of Parameter
+    pad: u16;
+    name_span: SpanIndex;
+    name_sym: Symbol;
+    generics: AstExtraIndex; // list of Identifier
+    params: AstExtraIndex; // list of Parameter
+    ret_type: AstNodeIndex;
+    body: AstNodeIndex;
+
+    pub fn new(
+        public: bool,
+        generic_count: u8,
+        param_count: u16,
+        name_span: SpanIndex,
+        name_sym: Symbol,
+        generics: AstExtraIndex,
+        params: AstExtraIndex,
+        ret_type: AstNodeIndex,
+        body: AstNodeIndex,
+    ) FnItem {
+        var self: FnItem = undefined;
+        self.type = AstNodeType::FnItem;
+        self.public = public;
+        self.generic_count = generic_count;
+        self.param_count = param_count;
+        self.pad = 0 as u16;
+        self.name_span = name_span;
+        self.name_sym = name_sym;
+        self.generics = generics;
+        self.params = params;
+        self.ret_type = ret_type;
+        self.body = body;
+        return self;
+    }
+
+    pub fn fmt(self: *const FnItem, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        if (self.public) {
+            fmt.unsafe_cstr_ptr("pub ");
+        }
+        fmt.unsafe_cstr_ptr("fn ");
+
+        if (self.generic_count > 0) {
+            fmt.unsafe_cstr_ptr("[");
+            const first_ident = &ast.extra.items[self.generics._private_index] as *Identifier;
+            first_ident.fmt(fmt, ast);
+            for (1..self.generic_count, &first_ident[1]) |_, generic| {
+                fmt.unsafe_cstr_ptr(", ");
+                generic.fmt(fmt, ast);
+            }
+            fmt.unsafe_cstr_ptr("]");
+        }
+
+        fmt.slice(ast.interner.get(self.name_sym));
+        fmt.unsafe_cstr_ptr("(");
+        if (self.param_count > 0) {
+            const first_param = &ast.extra.items[self.params._private_index] as *Parameter;
+            first_param.fmt(fmt, ast, indent);
+            for (1..self.param_count, &first_param[1]) |_, param| {
+                fmt.unsafe_cstr_ptr(", ");
+                param.fmt(fmt, ast, indent);
+            }
+        }
+        fmt.unsafe_cstr_ptr(")");
+        ast.display_node(fmt, self.ret_type._private_index, indent);
+        fmt.unsafe_cstr_ptr(" ");
+        ast.display_node(fmt, self.body._private_index, indent);
+    }
+}
+
+pub struct StructItem {
+    type: AstNodeType;
+    public: bool;
+    generic_count: u8;
+    field_count: u16;
+    pad: u16;
+    name_span: SpanIndex;
+    name_sym: Symbol;
+    generics: AstExtraIndex; // list of AstNode (items)
+    fields: AstExtraIndex; // list of Field
+
+    pub fn new(
+        public: bool,
+        generic_count: u8,
+        field_count: u16,
+        name_span: SpanIndex,
+        name_sym: Symbol,
+        generics: AstExtraIndex,
+        fields: AstExtraIndex,
+    ) StructItem {
+        var self: StructItem = undefined;
+        self.type = AstNodeType::StructItem;
+        self.public = public;
+        self.generic_count = generic_count;
+        self.field_count = field_count;
+        self.pad = 0 as u16;
+        self.name_span = name_span;
+        self.name_sym = name_sym;
+        self.generics = generics;
+        self.fields = fields;
+        return self;
+    }
+
+    pub fn fmt(self: *const StructItem, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        if (self.public) {
+            fmt.unsafe_cstr_ptr("pub ");
+        }
+        fmt.unsafe_cstr_ptr("struct ");
+        fmt.slice(ast.interner.get(self.name_sym));
+
+        if (self.generic_count > 0) {
+            fmt.unsafe_cstr_ptr("[");
+            const first_generic = &ast.extra.items[self.generics._private_index] as *Identifier;
+            first_generic.fmt(fmt, ast);
+            for (1..self.generic_count, &first_generic[1]) |_, generic| {
+                fmt.unsafe_cstr_ptr(", ");
+                generic.fmt(fmt, ast);
+            }
+            fmt.unsafe_cstr_ptr("]");
+        }
+
+        fmt.unsafe_cstr_ptr(" {");
+        if (self.field_count > 0) {
+            fmt.newline();
+            const field_indent = indent + 1 as u8;
+            for (0..self.field_count, &ast.extra.items[self.fields._private_index]) |_, field| {
+                Ast::fmt_indent(fmt, field_indent);
+                ast.display_node(fmt, field.*, field_indent);
+                fmt.newline();
+            }
+        }
+        fmt.unsafe_cstr_ptr("}");
+    }
 }
 
 pub struct UnionItem {
     type: AstNodeType;
-    visibility: Visibility;
-    name_sym: Symbol;
+    public: bool;
+    generic_count: u8;
+    field_count: u16;
+    pad: u16;
     name_span: SpanIndex;
-    generic_count: u16;
-    param_count: u16;
-    generic_index: AstExtraIndex; // list of Identifier
-    param_index: AstExtraIndex; // list of Parameter
+    name_sym: Symbol;
+    generics: AstExtraIndex; // list of Identifier
+    fields: AstExtraIndex; // list of Items
+
+    pub fn new(
+        public: bool,
+        generic_count: u8,
+        field_count: u16,
+        name_span: SpanIndex,
+        name_sym: Symbol,
+        generics: AstExtraIndex,
+        fields: AstExtraIndex,
+    ) UnionItem {
+        var self: UnionItem = undefined;
+        self.type = AstNodeType::UnionItem;
+        self.public = public;
+        self.generic_count = generic_count;
+        self.field_count = field_count;
+        self.pad = 0 as u16;
+        self.name_span = name_span;
+        self.name_sym = name_sym;
+        self.generics = generics;
+        self.fields = fields;
+        return self;
+    }
+
+    pub fn fmt(self: *const UnionItem, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        if (self.public) {
+            fmt.unsafe_cstr_ptr("pub ");
+        }
+        fmt.unsafe_cstr_ptr("union ");
+        fmt.slice(ast.interner.get(self.name_sym));
+
+        if (self.generic_count > 0) {
+            fmt.unsafe_cstr_ptr("[");
+            const first_generic = &ast.extra.items[self.generics._private_index] as *Identifier;
+            first_generic.fmt(fmt, ast);
+            for (1..self.generic_count, &first_generic[1]) |_, generic| {
+                fmt.unsafe_cstr_ptr(", ");
+                generic.fmt(fmt, ast);
+            }
+            fmt.unsafe_cstr_ptr("]");
+        }
+
+        fmt.unsafe_cstr_ptr(" {");
+        if (self.field_count > 0) {
+            fmt.newline();
+            const field_indent = indent + 1 as u8;
+            for (0..self.field_count, &ast.extra.items[self.fields._private_index]) |_, field| {
+                Ast::fmt_indent(fmt, field_indent);
+                ast.display_node(fmt, field.*, field_indent);
+                fmt.newline();
+            }
+        }
+        fmt.unsafe_cstr_ptr("}");
+    }
 }
 
 pub struct EnumItem {
     type: AstNodeType;
-    visibility: Visibility;
-    name_sym: Symbol;
+    pad: u8;
+    public: bool;
     name_span: SpanIndex;
+    name_sym: Symbol;
     variant_count: u32;
-    variant_index: AstExtraIndex; // list of Identifier
+    variants: AstExtraIndex; // list of Identifier
+
+    pub fn new(
+        public: bool,
+        name_span: SpanIndex,
+        name_sym: Symbol,
+        variant_count: u32,
+        variants: AstExtraIndex,
+    ) EnumItem {
+        var self: EnumItem = undefined;
+        self.type = AstNodeType::EnumItem;
+        self.pad = 0 as u8;
+        self.public = public;
+        self.name_span = name_span;
+        self.name_sym = name_sym;
+        self.variant_count = variant_count;
+        self.variants = variants;
+        return self;
+    }
+
+    pub fn fmt(self: *const EnumItem, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        if (self.public) {
+            fmt.unsafe_cstr_ptr("pub ");
+        }
+        fmt.unsafe_cstr_ptr("enum {");
+        if (self.variant_count > 0) {
+            const variant_indent = indent + 1 as u8;
+            for (0..self.variant_count, &ast.extra.items[self.variants._private_index] as *Identifier) |_, ident| {
+                fmt.newline();
+                Ast::fmt_indent(fmt, indent);
+                ident.fmt(fmt, ast);
+            }
+            fmt.newline();
+            Ast::fmt_indent(fmt, indent);
+        }
+        fmt.unsafe_cstr_ptr("}");
+    }
 }
 
 pub struct UseItem {
     type: AstNodeType;
-    visibility: Visibility;
+    pad: u8;
+    public: bool;
     // tree: AstNodeIndex (always +1);
 }
 
@@ -82,4 +358,29 @@ pub struct UseTreeLeaf {
     name_span: SpanIndex;
     rename_span: OptionalSpanIndex;
     rename_sym: Symbol;
+}
+
+pub struct StructureField {
+    type: AstNodeType;
+    pad: u16;
+    name_span: SpanIndex;
+    name_sym: Symbol;
+    ty: AstNodeIndex;
+
+    pub fn new(name_span: SpanIndex, name_sym: Symbol, ty: AstNodeIndex) StructureField {
+        var self: StructureField = undefined;
+        self.type = AstNodeType::StructureField;
+        self.pad = 0 as u16;
+        self.name_span = name_span;
+        self.name_sym = name_sym;
+        self.ty = ty;
+        return self;
+    }
+
+    pub fn fmt(self: *const StructureField, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.slice(ast.interner.get(self.name_sym));
+        fmt.unsafe_cstr_ptr(": ");
+        ast.display_node(fmt, self.ty._private_index, indent);
+        fmt.unsafe_cstr_ptr(";");
+    }
 }

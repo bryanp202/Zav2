@@ -21,6 +21,10 @@ pub struct VoidType {
         self.span = span;
         return self;
     }
+
+    pub fn fmt(self: *const VoidType, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("void");
+    }
 }
 
 pub struct BoolType {
@@ -34,6 +38,10 @@ pub struct BoolType {
         self.pad = 0 as u16;
         self.span = span;
         return self;
+    }
+
+    pub fn fmt(self: *const BoolType, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("bool");
     }
 }
 

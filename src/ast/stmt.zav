@@ -12,12 +12,6 @@ fn stmt_is_block(ast: *const Ast, index: u64) bool {
     return (&ast.nodes.items[index] as *const ItemStmt).type == AstNodeType::BlockStmt;
 }
 
-fn fmt_indent(fmt: *Formatter, indent: u64) void {
-    for (0..indent) |_| {
-        fmt.unsafe_cstr_ptr("    ");
-    }
-}
-
 pub struct ItemStmt {
     type: AstNodeType;
     pad: u16;
@@ -173,6 +167,38 @@ pub struct ReturnStmt {
     }
 }
 
+pub struct BreakStmt {
+    type: AstNodeType;
+    pad: u16;
+
+    pub fn new() BreakStmt {
+        var self: BreakStmt = undefined;
+        self.type = AstNodeType::BreakStmt;
+        self.pad = 0 as u16;
+        return self;
+    }
+
+    pub fn fmt(self: *const BreakStmt, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("break;");
+    }
+}
+
+pub struct ContinueStmt {
+    type: AstNodeType;
+    pad: u16;
+
+    pub fn new() ContinueStmt {
+        var self: ContinueStmt = undefined;
+        self.type = AstNodeType::ContinueStmt;
+        self.pad = 0 as u16;
+        return self;
+    }
+
+    pub fn fmt(self: *const ContinueStmt, fmt: *Formatter) void {
+        fmt.unsafe_cstr_ptr("continue;");
+    }
+}
+
 pub struct IfStmt {
     type: AstNodeType;
     pad: u16;
@@ -195,24 +221,28 @@ pub struct IfStmt {
         ast.display_node(fmt, self.cond._private_index, indent);
         fmt.unsafe_cstr_ptr(")");
 
-        const sub_stmt_indent = indent + 1 as u8;
+        var sub_stmt_indent: u64 = undefined;
         if (stmt_is_block(ast, self.then_branch._private_index)) {
+            sub_stmt_indent = indent;
             fmt.unsafe_cstr_ptr(" ");
         } else {
+            sub_stmt_indent = indent + 1 as u8;
             fmt.newline();
-            fmt_indent(fmt, sub_stmt_indent);
+            Ast::fmt_indent(fmt, sub_stmt_indent);
         }
         ast.display_node(fmt, self.then_branch._private_index, sub_stmt_indent);
 
         if (self.else_branch.is_some()) {
             if (stmt_is_block(ast, self.else_branch._private_index)) {
+                sub_stmt_indent = indent;
                 fmt.unsafe_cstr_ptr(" else ");
             } else {
+                sub_stmt_indent = indent + 1 as u8;
                 fmt.newline();
-                fmt_indent(fmt, indent);
+                Ast::fmt_indent(fmt, indent);
                 fmt.unsafe_cstr_ptr("else");
                 fmt.newline();
-                fmt_indent(fmt, sub_stmt_indent);
+                Ast::fmt_indent(fmt, sub_stmt_indent);
             }
             ast.display_node(fmt, self.then_branch._private_index, sub_stmt_indent);
         }
@@ -238,13 +268,15 @@ pub struct WhileStmt {
         ast.display_node(fmt, self.cond._private_index, indent);
         fmt.unsafe_cstr_ptr(")");
 
-        const sub_stmt_indent = indent + 1 as u8;
+        var sub_stmt_indent: u64 = undefined;
         const body_is_block = stmt_is_block(ast, self.body._private_index);
         if (body_is_block) {
+            sub_stmt_indent = indent;
             fmt.unsafe_cstr_ptr(" ");
         } else {
+            sub_stmt_indent = indent + 1 as u8;
             fmt.newline();
-            fmt_indent(fmt, sub_stmt_indent);
+            Ast::fmt_indent(fmt, sub_stmt_indent);
         }
         ast.display_node(fmt, self.body._private_index, sub_stmt_indent);
 
@@ -252,10 +284,10 @@ pub struct WhileStmt {
             fmt.unsafe_cstr_ptr(" loop ");
         } else {
             fmt.newline();
-            fmt_indent(fmt, indent);
+            Ast::fmt_indent(fmt, indent);
             fmt.unsafe_cstr_ptr("loop ");
         }
-        ast.display_node(fmt, self.loop_stmt._private_index, sub_stmt_indent);
+        ast.display_node(fmt, self.loop_stmt._private_index, indent);
     }
 }
 
@@ -296,22 +328,21 @@ pub struct ForStmt {
         }
         fmt.unsafe_cstr_ptr(") |");
 
-        const first_binding_ptr = &ast.extra.items[self.bindings._private_index] as *Identifier;
-        fmt.slice(ast.interner.get(first_binding_ptr.sym));
-        for (1..self.binding_count, &first_binding_ptr[1]) |_, binding| {
+        const first_binding = &ast.extra.items[self.bindings._private_index] as *Identifier;
+        first_binding.fmt(fmt, ast);
+        for (1..self.binding_count, &first_binding[1]) |_, binding| {
             fmt.unsafe_cstr_ptr(", ");
             fmt.slice(ast.interner.get(binding.sym));
         }
         fmt.unsafe_cstr_ptr("|");
 
-        const sub_stmt_indent = indent + 1 as u8;
         if (stmt_is_block(ast, self.body._private_index)) {
             fmt.unsafe_cstr_ptr(" ");
         } else {
             fmt.newline();
-            fmt_indent(fmt, sub_stmt_indent);
+            Ast::fmt_indent(fmt, indent);
         }
-        ast.display_node(fmt, self.body._private_index, sub_stmt_indent);
+        ast.display_node(fmt, self.body._private_index, indent);
     }
 }
 
@@ -336,12 +367,73 @@ pub struct BlockStmt {
             fmt.newline();
             const sub_stmt_indent = indent + 1 as u8;
             for (0..self.len, &ast.extra.items[self.stmts._private_index]) |_, stmt| {
-                fmt_indent(fmt, sub_stmt_indent);
+                Ast::fmt_indent(fmt, sub_stmt_indent);
                 ast.display_node(fmt, stmt.*, sub_stmt_indent);
                 fmt.newline();
             }
         }
         fmt.unsafe_cstr_ptr("}");
+    }
+}
+
+pub struct SwitchStmt {
+    type: AstNodeType;
+    branch_count: u16;
+    cond: AstNodeIndex;
+    branches: AstExtraIndex; // list of AstNodes (SwitchBranchStmts)
+
+    pub fn new(branch_count: u16, cond: AstNodeIndex, branches: AstExtraIndex) SwitchStmt {
+        var self: SwitchStmt = undefined;
+        self.type = AstNodeType::SwitchStmt;
+        self.branch_count = branch_count;
+        self.cond = cond;
+        self.branches = branches;
+        return self;
+    }
+
+    pub fn fmt(self: *const SwitchStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.unsafe_cstr_ptr("switch (");
+        fmt.unsafe_cstr_ptr(") {");
+        if (self.branch_count > 0) {
+            const branch_indent = indent + 1 as u8;
+            for (0..self.branch_count, &ast.extra.items[self.branches._private_index]) |_, branch| {
+                fmt.newline();
+                Ast::fmt_indent(fmt, branch_indent);
+                ast.display_node(fmt, branch.*, branch_indent);
+            }
+            fmt.newline();
+            Ast::fmt_indent(fmt, indent);
+        }
+        fmt.unsafe_cstr_ptr("}");
+    }
+}
+
+pub struct SwitchBranchStmt {
+    type: AstNodeType;
+    literal_expr_count: u16; // atleast one
+    literal_exprs: AstExtraIndex; // AstNode (exprs/literals)
+    body: AstNodeIndex;
+
+    pub fn new(literal_expr_count: u16, literal_exprs: AstExtraIndex, body: AstNodeIndex) SwitchBranchStmt {
+        var self: SwitchBranchStmt = undefined;
+        self.type = AstNodeType::SwitchBranchStmt;
+        self.literal_expr_count = literal_expr_count;
+        self.literal_exprs = literal_exprs;
+        self.body = body;
+        return self;
+    }
+
+    pub fn fmt(self: *const SwitchBranchStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        const first_literal_expr = &ast.extra.items[self.literal_exprs._private_index];
+        ast.display_node(fmt, first_literal_expr.*, indent);
+        for (1..self.literal_expr_count, &first_literal_expr[1]) |_, literal_expr| {
+            fmt.newline();
+            Ast::fmt_indent(fmt, indent);
+            fmt.unsafe_cstr_ptr("| ");
+            ast.display_node(fmt, literal_expr.*, indent);
+        }
+        fmt.unsafe_cstr_ptr(" => ");
+        ast.display_node(fmt, self.body._private_index, indent);
     }
 }
 
