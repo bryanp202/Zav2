@@ -334,30 +334,102 @@ pub struct EnumItem {
 
 pub struct UseItem {
     type: AstNodeType;
-    pad: u8;
     public: bool;
-    // tree: AstNodeIndex (always +1);
+    global: bool;
+    // tree: UseTree (always +1);
+
+    pub fn new(public: bool, global: bool) UseItem {
+        var self: UseItem = undefined;
+        self.public = public;
+        self.global = global;
+        return self;
+    }
+
+    pub fn fmt(self: *const UseItem, fmt: *Formatter, ast: *const Ast, index: u64, indent: u64) void {
+        if (self.public) {
+            fmt.unsafe_cstr_ptr("pub ");
+        }
+        fmt.unsafe_cstr_ptr("use ");
+        if (self.global) {
+            fmt.unsafe_cstr_ptr("::");
+        }
+        ast.display_next_node(fmt, @sizeof(self.*), index, indent);
+    }
 }
 
-pub struct UseTreeNode {
+pub struct UseTree {
     type: AstNodeType;
-    prefix_count: u16;
-    prefix_index: AstExtraIndex; // list of ScopeSegment
-    // tail: AstNodeIndex (always +1); // branch or Leaf
+    segment_count: u16;
+    segments: AstExtraIndex; // list of Identifiers
+    // end: AstNodeIndex (always +1); // UseTreeSimple or UseTreeNested
+
+
+    pub fn new(segment_count: u16, segments: AstExtraIndex) UseTree {
+        var self: UseTree = undefined;
+        self.type = AstNodeType::UseTree;
+        self.segment_count = segment_count;
+        self.segments = segments;
+        return self;
+    }
+
+    pub fn fmt(self: *const UseTree, fmt: *Formatter, ast: *const Ast, index: u64, indent: u64) void {
+        if (self.segment_count > 0) {
+            const first_segment = &ast.extra.items[self.segments._private_index] as *Identifier;
+            first_segment.fmt(fmt, ast);
+            for (1..self.segment_count, &first_segment[1]) |_, segment| {
+                fmt.unsafe_cstr_ptr("::");
+                segment.fmt(fmt, ast);
+            }
+        }
+        ast.display_next_node(fmt, index, @sizeof(self.*), indent);
+    }
 }
 
-pub struct UseTreeBranch {
+pub struct UseTreeSimple {
     type: AstNodeType;
-    nested_count: u16;
-    nested_index: AstExtraIndex; // list of UseTreeNode
-}
-
-pub struct UseTreeLeaf {
-    type: AstNodeType;
-    name_sym: Symbol;
-    name_span: SpanIndex;
     rename_span: OptionalSpanIndex;
     rename_sym: Symbol;
+
+    pub fn new(rename_span: OptionalSpanIndex, rename_sym: Symbol) UseTreeSimple {
+        var self: UseTreeSimple = undefined;
+        self.rename_span = rename_span;
+        self.rename_sym = rename_sym;
+        return self;
+    }
+
+    pub fn fmt(self: *const UseTreeSimple, fmt: *Formatter, ast: *const Ast) void {
+        if (self.rename_span.is_some()) {
+            fmt.unsafe_cstr_ptr(" as ");
+            fmt.slice(ast.interner.get(self.rename_sym));
+        }
+    }
+}
+
+pub struct UseTreeNested {
+    type: AstNodeType;
+    nested_count: u16;
+    nested: AstExtraIndex; // list of UseTree
+
+    pub fn new(nested_count: u16, nested: AstExtraIndex) UseTreeNested {
+        var self: UseTreeNested = undefined;
+        self.type = AstNodeType::UseTreeNested;
+        self.nested_count = nested_count;
+        self.nested = nested;
+        return self;
+    }
+
+    pub fn fmt(self: *const UseTreeNested, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.unsafe_cstr_ptr("::{");
+        if (self.nested_count > 0) {
+            const first_nested = &ast.extra.items[self.nested._private_index];
+            ast.display_node(fmt, first_nested.*, indent);
+            for (1..self.nested_count, &first_nested[1]) |_, nested| {
+                fmt.unsafe_cstr_ptr(", ");
+                ast.display_node(fmt, nested.*, indent);
+            }
+        }
+        fmt.unsafe_cstr_ptr("}");
+    }
 }
 
 pub struct StructureField {
