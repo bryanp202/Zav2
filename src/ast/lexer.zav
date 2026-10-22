@@ -315,13 +315,14 @@ pub struct Lexer {
                     continue;
                 }
                 47 => { // '/'
-                    self.advance();
-                    if (self.match('/')) {
+                    if (self.peek_next() == '/') {
                         while (!self.at_end() and !self.match(10 as u8)) {
                             self.advance();
                         }
-                    } else if (self.match('*')) {
-                        self.start = (self.curr - 2) as *const u8;
+                        continue;
+                    } else if (self.peek_next() == '*') {
+                        self.advance();
+                        self.advance();
                         var error = true;
                         while (!self.at_end()) {
                             if (self.check('*') and self.peek_next() == '/') {
@@ -335,8 +336,8 @@ pub struct Lexer {
                         if (error) {
                             return Result::[void, ErrorType]::Err(ErrorType::UnterminatedBlockComment);
                         }
+                        continue;
                     }
-                    continue;
                 }
             }
             break;
@@ -362,11 +363,11 @@ pub struct Lexer {
     }
 
     fn check(self: *Lexer, expected: u8) bool {
-        return self.curr.* == expected;
+        return self.curr != self.end ? self.curr.* == expected : false;
     }
 
     fn match(self: *Lexer, expected: u8) bool {
-        if (self.check(expected) and !self.at_end()) {
+        if (self.check(expected)) {
             self.advance();
             return true;
         }
