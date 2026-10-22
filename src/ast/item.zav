@@ -340,6 +340,7 @@ pub struct UseItem {
 
     pub fn new(public: bool, global: bool) UseItem {
         var self: UseItem = undefined;
+        self.type = AstNodeType::UseItem;
         self.public = public;
         self.global = global;
         return self;

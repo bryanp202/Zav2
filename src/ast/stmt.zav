@@ -1,3 +1,6 @@
+//! Unsafe to have implicit stmt in node.
+//! No guarantee that parent node comes first.
+
 use ::std::fmt::Formatter;
 
 use super::Ast;
@@ -8,8 +11,8 @@ use super::AstExtraIndex;
 use super::SpanIndex;
 use super::Identifier;
 
-fn stmt_is_block(ast: *const Ast, index: u64) bool {
-    return (&ast.nodes.items[index] as *const ItemStmt).type == AstNodeType::BlockStmt;
+fn stmt_is_type(ast: *const Ast, index: u64, expected: AstNodeType) bool {
+    return (&ast.nodes.items[index] as *const ItemStmt).type == expected;
 }
 
 pub struct ItemStmt {
@@ -32,20 +35,20 @@ pub struct ItemStmt {
 pub struct DeferStmt {
     type: AstNodeType;
     pad: u8;
-    err: bool;
+    is_err: bool;
     expr: AstNodeIndex;
 
-    pub fn new(err: bool, expr: AstNodeIndex) DeferStmt {
+    pub fn new(is_err: bool, expr: AstNodeIndex) DeferStmt {
         var self: DeferStmt = undefined;
         self.type = AstNodeType::DeferStmt;
         self.pad = 0 as u8;
-        self.err = err;
+        self.is_err = is_err;
         self.expr = expr;
         return self;
     }
 
     pub fn fmt(self: *const DeferStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
-        fmt.unsafe_cstr_ptr(self.err ? "edefer " as *const u8 : "defer " as *const u8);
+        fmt.unsafe_cstr_ptr(self.is_err ? "edefer " as *const u8 : "defer " as *const u8);
         ast.display_node(fmt, self.expr._private_index, indent);
         fmt.unsafe_cstr_ptr(";");
     }
@@ -54,23 +57,23 @@ pub struct DeferStmt {
 pub struct DeclStmt {
     type: AstNodeType;
     pad: u8;
-    mutable: bool;
+    is_mutable: bool;
     // pattern: AstNodeIndex (always +1);
     decl_type: OptionalAstNodeIndex;
     expr: OptionalAstNodeIndex;
 
-    pub fn new(mutable: bool, decl_type: OptionalAstNodeIndex, expr: OptionalAstNodeIndex) DeclStmt {
+    pub fn new(is_mutable: bool, decl_type: OptionalAstNodeIndex, expr: OptionalAstNodeIndex) DeclStmt {
         var self: DeclStmt = undefined;
         self.type = AstNodeType::DeclStmt;
         self.pad = 0 as u8;
-        self.mutable = mutable;
+        self.is_mutable = is_mutable;
         self.decl_type = decl_type;
         self.expr = expr;
         return self;
     }
 
     pub fn fmt(self: *const DeclStmt, fmt: *Formatter, ast: *const Ast, index: u64, indent: u64) void {
-        fmt.unsafe_cstr_ptr(self.mutable ? "var " as *const u8 : "const " as *const u8);
+        fmt.unsafe_cstr_ptr(self.is_mutable ? "var " as *const u8 : "const " as *const u8);
         ast.display_next_node(fmt, index, @sizeof(self.*), indent);
         if (self.decl_type.is_some()) {
             fmt.unsafe_cstr_ptr(": ");
@@ -94,6 +97,7 @@ pub struct AssignStmt {
 
     pub fn new(assign_op: AssignOp, lhs: AstNodeIndex, rhs: AstNodeIndex) AssignStmt {
         var self: AssignStmt = undefined;
+        self.type = AstNodeType::AssignStmt;
         self.assign_op = assign_op;
         self.lhs = lhs;
         self.rhs = rhs;
@@ -104,6 +108,7 @@ pub struct AssignStmt {
         ast.display_node(fmt, self.lhs._private_index, indent);
         var op: *const u8 = undefined;
         switch (self.assign_op) {
+            AssignOp::Equal => op = "";
             AssignOp::BitOr => op = "|";
             AssignOp::BitXor => op = "^";
             AssignOp::BitAnd => op = "&";
@@ -131,6 +136,7 @@ pub struct ExprStmt {
 
     pub fn new(expr: AstNodeIndex) ExprStmt {
         var self: ExprStmt = undefined;
+        self.type = AstNodeType::ExprStmt;
         self.pad = 0 as u16;
         self.expr = expr;
         return self;
@@ -145,20 +151,20 @@ pub struct ExprStmt {
 pub struct ReturnStmt {
     type: AstNodeType;
     pad: u8;
-    err: bool;
+    is_err: bool;
     expr: OptionalAstNodeIndex;
 
-    pub fn new(err: bool, expr: OptionalAstNodeIndex) ReturnStmt {
+    pub fn new(is_err: bool, expr: OptionalAstNodeIndex) ReturnStmt {
         var self: ReturnStmt = undefined;
         self.type = AstNodeType::ReturnStmt;
         self.pad = 0 as u8;
-        self.err = err;
+        self.is_err = is_err;
         self.expr = expr;
         return self;
     }
 
     pub fn fmt(self: *const ReturnStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
-        fmt.unsafe_cstr_ptr(self.err ? "ereturn" as *const u8 : "return" as *const u8);
+        fmt.unsafe_cstr_ptr(self.is_err ? "ereturn" as *const u8 : "return" as *const u8);
         if (self.expr.is_some()) {
             fmt.unsafe_cstr_ptr(" ");
             ast.display_node(fmt, self.expr._private_index, indent);
@@ -222,7 +228,8 @@ pub struct IfStmt {
         fmt.unsafe_cstr_ptr(")");
 
         var sub_stmt_indent: u64 = undefined;
-        if (stmt_is_block(ast, self.then_branch._private_index)) {
+        const then_branch_is_block = stmt_is_type(ast, self.then_branch._private_index, AstNodeType::BlockStmt);
+        if (then_branch_is_block) {
             sub_stmt_indent = indent;
             fmt.unsafe_cstr_ptr(" ");
         } else {
@@ -233,18 +240,25 @@ pub struct IfStmt {
         ast.display_node(fmt, self.then_branch._private_index, sub_stmt_indent);
 
         if (self.else_branch.is_some()) {
-            if (stmt_is_block(ast, self.else_branch._private_index)) {
-                sub_stmt_indent = indent;
+            if (then_branch_is_block) {
                 fmt.unsafe_cstr_ptr(" else ");
             } else {
-                sub_stmt_indent = indent + 1 as u8;
                 fmt.newline();
                 Ast::fmt_indent(fmt, indent);
                 fmt.unsafe_cstr_ptr("else");
+            }
+
+            if (
+                stmt_is_type(ast, self.else_branch._private_index, AstNodeType::BlockStmt)
+                or stmt_is_type(ast, self.else_branch._private_index, AstNodeType::IfStmt)
+            ) {
+                sub_stmt_indent = indent;
+            } else {
+                sub_stmt_indent = indent + 1 as u8;
                 fmt.newline();
                 Ast::fmt_indent(fmt, sub_stmt_indent);
             }
-            ast.display_node(fmt, self.then_branch._private_index, sub_stmt_indent);
+            ast.display_node(fmt, self.else_branch._private_index, sub_stmt_indent);
         }
     }
 }
@@ -257,6 +271,7 @@ pub struct WhileStmt {
 
     pub fn new(cond: AstNodeIndex, body: AstNodeIndex, loop_stmt: OptionalAstNodeIndex) WhileStmt {
         var self: WhileStmt = undefined;
+        self.type = AstNodeType::WhileStmt;
         self.cond = cond;
         self.body = body;
         self.loop_stmt = loop_stmt;
@@ -269,7 +284,7 @@ pub struct WhileStmt {
         fmt.unsafe_cstr_ptr(")");
 
         var sub_stmt_indent: u64 = undefined;
-        const body_is_block = stmt_is_block(ast, self.body._private_index);
+        const body_is_block = stmt_is_type(ast, self.body._private_index, AstNodeType::BlockStmt);
         if (body_is_block) {
             sub_stmt_indent = indent;
             fmt.unsafe_cstr_ptr(" ");
@@ -280,14 +295,16 @@ pub struct WhileStmt {
         }
         ast.display_node(fmt, self.body._private_index, sub_stmt_indent);
 
-        if (body_is_block) {
-            fmt.unsafe_cstr_ptr(" loop ");
-        } else {
-            fmt.newline();
-            Ast::fmt_indent(fmt, indent);
-            fmt.unsafe_cstr_ptr("loop ");
+        if (self.loop_stmt.is_some()) {
+            if (body_is_block) {
+                fmt.unsafe_cstr_ptr(" loop ");
+            } else {
+                fmt.newline();
+                Ast::fmt_indent(fmt, indent);
+                fmt.unsafe_cstr_ptr("loop ");
+            }
+            ast.display_node(fmt, self.loop_stmt._private_index, indent);
         }
-        ast.display_node(fmt, self.loop_stmt._private_index, indent);
     }
 }
 
@@ -336,7 +353,7 @@ pub struct ForStmt {
         }
         fmt.unsafe_cstr_ptr("|");
 
-        if (stmt_is_block(ast, self.body._private_index)) {
+        if (stmt_is_type(ast, self.body._private_index, AstNodeType::BlockStmt)) {
             fmt.unsafe_cstr_ptr(" ");
         } else {
             fmt.newline();
@@ -349,28 +366,29 @@ pub struct ForStmt {
 pub struct BlockStmt {
     type: AstNodeType;
     pad: u16;
-    len: u32;
+    stmt_count: u32;
     stmts: AstExtraIndex; // list of AstNodeIndex (stmt)
 
-    pub fn new(len: u32, stmts: AstExtraIndex) BlockStmt {
+    pub fn new(stmt_count: u32, stmts: AstExtraIndex) BlockStmt {
         var self: BlockStmt = undefined;
         self.type = AstNodeType::BlockStmt;
         self.pad = 0 as u16;
-        self.len = len;
+        self.stmt_count = stmt_count;
         self.stmts = stmts;
         return self;
     }
 
     pub fn fmt(self: *const BlockStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr("{");
-        if (self.len != 0) {
+        if (self.stmt_count != 0) {
             fmt.newline();
             const sub_stmt_indent = indent + 1 as u8;
-            for (0..self.len, &ast.extra.items[self.stmts._private_index]) |_, stmt| {
+            for (0..self.stmt_count, &ast.extra.items[self.stmts._private_index]) |_, stmt| {
                 Ast::fmt_indent(fmt, sub_stmt_indent);
                 ast.display_node(fmt, stmt.*, sub_stmt_indent);
                 fmt.newline();
             }
+            Ast::fmt_indent(fmt, indent);
         }
         fmt.unsafe_cstr_ptr("}");
     }
@@ -438,6 +456,7 @@ pub struct SwitchBranchStmt {
 }
 
 pub enum AssignOp {
+    Equal,
     BitOr,
     BitXor,
     BitAnd,

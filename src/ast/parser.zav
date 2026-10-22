@@ -31,6 +31,8 @@ use super::expr::UnaryOp;
 use super::expr::TrailingOp;
 use super::expr::BinaryOp;
 use super::expr::PrimativeType;
+use super::stmt;
+use super::stmt::AssignOp;
 
 pub struct ParseResult {
     module: UnresolvedModule;
@@ -114,7 +116,7 @@ pub struct Parser {
         var first_node: OptionalAstNodeIndex = undefined;
 
         self.advance();
-        const expr = self.parse_expr();
+        const expr = self.parse_declaration();
         if (expr.is_err()) {
             self.local_synchronize();
             first_node = OptionalAstNodeIndex::None();
@@ -125,7 +127,7 @@ pub struct Parser {
         self.set_node(root_index, &root_node as *u32);
 
         while (!self.at_end()) {
-            const expr = self.parse_expr();
+            const expr = self.parse_declaration();
             if (expr.is_err()) {
                 self.local_synchronize();
             }
@@ -164,8 +166,226 @@ pub struct Parser {
     ///////////////////////
     // Statement Parsing //
     ///////////////////////
+    fn parse_declaration(self: *Parser) Result[AstNodeIndex, void] {
+        switch (self.curr.type) {
+            TokenType::Defer
+            | TokenType::Edefer => return self.parse_defer_stmt();
+            TokenType::Const
+            | TokenType::Var => return self.parse_decl_stmt();
+            else => return self.parse_stmt();
+        }
+    }
+
+    fn parse_defer_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::DeferStmt));
+        edefer self.unreserve_node(index);
+
+        self.advance();
+        const is_err = self.prev.type == TokenType::Edefer;
+
+        const expr = self.parse_expr();
+        if (expr.is_err()) ereturn expr;
+
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = stmt::DeferStmt::new(is_err, expr.unwrap_ok());
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_decl_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::DeclStmt));
+        edefer self.unreserve_node(index);
+
+        self.advance();
+        const is_mutable = self.prev.type == TokenType::Var;
+
+        const pattern = self.parse_pattern();
+        if (pattern.is_err()) ereturn pattern;
+
+        var decl_type: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::Colon)) {
+            const type = self.parse_type();
+            if (type.is_err()) ereturn type;
+            decl_type = type.unwrap_ok().as_optional();
+        } else {
+            decl_type = OptionalAstNodeIndex::None();
+        }
+
+        if (!self.eat(TokenType::Equal, ErrorType::ExpectedEqual)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        var decl_expr: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::Undefined)) {
+            decl_expr = OptionalAstNodeIndex::None();
+        } else {
+            const expr = self.parse_expr();
+            if (expr.is_err()) ereturn expr;
+            decl_expr = expr.unwrap_ok().as_optional();
+        }
+
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = stmt::DeclStmt::new(is_mutable, decl_type, decl_expr);
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
     fn parse_stmt(self: *Parser) Result[AstNodeIndex, void] {
-        @abort("todo");
+        switch (self.curr.type) {
+            TokenType::If => return self.parse_if_stmt();
+            TokenType::While => return self.parse_while_stmt();
+            // TokenType::For => return self.parse_for_stmt();
+            // TokenType::Switch => return self.parse_switch_stmt();
+            TokenType::LeftBrace => return self.parse_block_stmt();
+            // TokenType::Return
+            // | TokenType::Ereturn => return self.parse_return_stmt();
+            // TokenType::Break => return self.parse_break_stmt();
+            // TokenType::Continue => return self.parse_continue_stmt();
+            else => return self.parse_assign_stmt();
+        }
+    }
+
+    fn parse_assign_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const expr = self.parse_expr();
+        if (expr.is_err()) ereturn expr;
+
+        var op: AssignOp = undefined;
+        switch (self.curr.type) {
+            TokenType::Equal => op = AssignOp::Equal;
+            TokenType::PipeEqual => op = AssignOp::BitOr;
+            TokenType::CaretEqual => op = AssignOp::BitXor;
+            TokenType::AmpersandEqual => op = AssignOp::BitAnd;
+            TokenType::ShiftRightEqual => op = AssignOp::ShiftR;
+            TokenType::ShiftLeftEqual => op = AssignOp::ShiftL;
+            TokenType::PlusEqual => op = AssignOp::TermAdd;
+            TokenType::MinusEqual => op = AssignOp::TermSub;
+            TokenType::StarEqual => op = AssignOp::FactorMul;
+            TokenType::SlashEqual => op = AssignOp::FactorDiv;
+            TokenType::PercentEqual => op = AssignOp::FactorMod;
+            else => return self.parse_expr_stmt(expr.unwrap_ok());
+        }
+        self.advance();
+
+        const index = self.reserve_node(@sizeof(0 as stmt::AssignStmt));
+        edefer self.unreserve_node(index);
+
+        const rhs = self.parse_expr();
+        if (rhs.is_err()) ereturn rhs;
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = stmt::AssignStmt::new(op, expr.unwrap_ok(), rhs.unwrap_ok());
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_expr_stmt(self: *Parser, expr: AstNodeIndex) Result[AstNodeIndex, void] {
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const node = stmt::ExprStmt::new(expr);
+        const index = self.store_node(&node as *u32, @sizeof(node));
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_block_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::BlockStmt));
+        edefer self.unreserve_node(index);
+        const stmt_start = self.start_scratch();
+        defer self.clear_scratch(stmt_start);
+
+        self.advance();
+        while (!self.check(TokenType::RightBrace) and !self.at_end()) {
+            const stmt = self.parse_declaration();
+            if (stmt.is_err()) {
+                self.local_synchronize();
+                continue;
+            }
+            const stmt_index = stmt.unwrap_ok();
+            self.scratch.push(stmt_index._private_index);
+        }
+        if (!self.eat(TokenType::RightBrace, ErrorType::ExpectedRightBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const { _0: stmts, _1: stmt_count } = self.store_extra(stmt_start);
+        if (stmt_count > 4294967295 as u32) {
+            const path_slice = self.path.as_slice();
+            @abort("Block stmt len overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+
+        const node = stmt::BlockStmt::new(stmt_count as u32, stmts);
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_if_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::IfStmt));
+        edefer self.unreserve_node(index);
+
+        self.advance();
+        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const cond = self.parse_expr();
+        if (cond.is_err()) ereturn cond;
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const then_branch = self.parse_stmt();
+        if (then_branch.is_err()) ereturn then_branch;
+
+        var else_branch: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::Else)) {
+            const stmt = self.parse_stmt();
+            if (stmt.is_err()) ereturn stmt;
+            else_branch = stmt.unwrap_ok().as_optional();
+        } else {
+            else_branch = OptionalAstNodeIndex::None();
+        }
+
+        const node = stmt::IfStmt::new(cond.unwrap_ok(), then_branch.unwrap_ok(), else_branch);
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_while_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::WhileStmt));
+        edefer self.unreserve_node(index);
+
+        self.advance();
+        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const cond = self.parse_expr();
+        if (cond.is_err()) ereturn cond;
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const body = self.parse_stmt();
+        if (body.is_err()) ereturn body;
+
+        var loop_stmt: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::Loop)) {
+            const stmt = self.parse_stmt();
+            if (stmt.is_err()) ereturn stmt;
+            loop_stmt = stmt.unwrap_ok().as_optional();
+        } else {
+            loop_stmt = OptionalAstNodeIndex::None();
+        }
+
+        const node = stmt::WhileStmt::new(cond.unwrap_ok(), body.unwrap_ok(), loop_stmt);
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
     }
 
     ////////////////////////

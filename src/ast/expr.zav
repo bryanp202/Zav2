@@ -1,5 +1,5 @@
 //! Unsafe to have implicit expr in node.
-//! No gaurantee that parent node comes first.
+//! No guarantee that parent node comes first.
 
 use ::std::fmt::Formatter;
 
