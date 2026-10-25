@@ -353,13 +353,16 @@ pub struct ForStmt {
         }
         fmt.unsafe_cstr_ptr("|");
 
+        var sub_stmt_indent: u64 = undefined;
         if (stmt_is_type(ast, self.body._private_index, AstNodeType::BlockStmt)) {
+            sub_stmt_indent = indent;
             fmt.unsafe_cstr_ptr(" ");
         } else {
+            sub_stmt_indent = indent + 1 as u8;
             fmt.newline();
-            Ast::fmt_indent(fmt, indent);
+            Ast::fmt_indent(fmt, sub_stmt_indent);
         }
-        ast.display_node(fmt, self.body._private_index, indent);
+        ast.display_node(fmt, self.body._private_index, sub_stmt_indent);
     }
 }
 

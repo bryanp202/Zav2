@@ -172,6 +172,7 @@ pub struct Parser {
             | TokenType::Edefer => return self.parse_defer_stmt();
             TokenType::Const
             | TokenType::Var => return self.parse_decl_stmt();
+            // other items
             else => return self.parse_stmt();
         }
     }
@@ -240,7 +241,7 @@ pub struct Parser {
         switch (self.curr.type) {
             TokenType::If => return self.parse_if_stmt();
             TokenType::While => return self.parse_while_stmt();
-            // TokenType::For => return self.parse_for_stmt();
+            TokenType::For => return self.parse_for_stmt();
             // TokenType::Switch => return self.parse_switch_stmt();
             TokenType::LeftBrace => return self.parse_block_stmt();
             TokenType::Return
@@ -249,56 +250,6 @@ pub struct Parser {
             TokenType::Continue => return self.parse_continue_stmt();
             else => return self.parse_assign_stmt();
         }
-    }
-
-    fn parse_return_stmt(self: *Parser) Result[AstNodeIndex, void] {
-        const index = self.reserve_node(@sizeof(0 as stmt::ReturnStmt));
-        edefer self.unreserve_node(index);
-
-        self.advance();
-        const is_err = self.prev.type == TokenType::Ereturn;
-
-        var ret_expr: OptionalAstNodeIndex = undefined;
-        if (self.match(TokenType::Semicolon)) {
-            ret_expr = OptionalAstNodeIndex::None();
-        } else {
-            const expr = self.parse_expr();
-            if (expr.is_err()) ereturn expr;
-            ret_expr = expr.unwrap_ok().as_optional();
-
-            if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
-                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-            }
-        }
-        
-
-        const node = stmt::ReturnStmt::new(is_err, ret_expr);
-        self.set_node(index, &node as *u32);
-        return Result::[AstNodeIndex, void]::Ok(index);
-    }
-
-    fn parse_break_stmt(self: *Parser) Result[AstNodeIndex, void] {
-        self.advance();
-
-        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
-
-        const node = stmt::BreakStmt::new();
-        const index = self.store_node(&node as *u32, @sizeof(node));
-        return Result::[AstNodeIndex, void]::Ok(index);
-    }
-
-    fn parse_continue_stmt(self: *Parser) Result[AstNodeIndex, void] {
-        self.advance();
-
-        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
-
-        const node = stmt::ContinueStmt::new();
-        const index = self.store_node(&node as *u32, @sizeof(node));
-        return Result::[AstNodeIndex, void]::Ok(index);
     }
 
     fn parse_assign_stmt(self: *Parser) Result[AstNodeIndex, void] {
@@ -435,6 +386,138 @@ pub struct Parser {
 
         const node = stmt::WhileStmt::new(cond.unwrap_ok(), body.unwrap_ok(), loop_stmt);
         self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_for_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::ForStmt));
+        edefer self.unreserve_node(index);
+        const scratch_start = self.start_scratch();
+        defer self.clear_scratch(scratch_start);
+
+        self.advance();
+        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const begin_expr = self.parse_expr();
+        if (begin_expr.is_err()) ereturn begin_expr;
+        self.scratch.push(begin_expr.unwrap_ok()._private_index);
+
+        if (!self.eat(TokenType::DotDot, ErrorType::ExpectedDotDot)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const end_expr = self.parse_expr();
+        if (end_expr.is_err()) ereturn end_expr;
+        self.scratch.push(end_expr.unwrap_ok()._private_index);
+
+        if (self.match(TokenType::Comma)) {
+            while (!self.check(TokenType::RightParen)) {
+                const ptr_expr = self.parse_expr();
+                if (ptr_expr.is_err()) ereturn ptr_expr;
+                self.scratch.push(ptr_expr.unwrap_ok()._private_index);
+
+                if (!self.match(TokenType::Comma)) break;
+            }
+        }
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void); 
+        }
+        const { _0: exprs, _1: expr_count } = self.store_extra(scratch_start);
+        if (expr_count > 255) {
+            const path_slice = self.path.as_slice();
+            @abort("ForStmt expression count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+        self.clear_scratch(scratch_start);
+
+        if (!self.eat(TokenType::Pipe, ErrorType::ExpectedPipe)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void); 
+        }
+        while (true) {
+            if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+            const binding = ast::Identifier::new(
+                self.store_span_since(self.prev),
+                self.ast.interner.intern(self.prev.lexeme),
+            );
+            self.push_scratch_chunks(&binding as *u32, @sizeof(binding));
+
+            if (!self.match(TokenType::Comma) or self.check(TokenType::Pipe)) break;
+        }
+        if (!self.eat(TokenType::Pipe, ErrorType::ExpectedPipe)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void); 
+        }
+
+        const { _0: bindings, _1: binding_count } = self.store_extra_sized(
+            scratch_start,
+            @sizeof(0 as ast::Identifier)
+        );
+        if (binding_count > 255) {
+            const path_slice = self.path.as_slice();
+            @abort("ForStmt binding count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        }
+
+        const body = self.parse_stmt();
+        if (body.is_err()) ereturn body;
+
+        const node = stmt::ForStmt::new(
+            expr_count as u8,
+            binding_count as u8,
+            exprs,
+            bindings,
+            body.unwrap_ok()
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_return_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::ReturnStmt));
+        edefer self.unreserve_node(index);
+
+        self.advance();
+        const is_err = self.prev.type == TokenType::Ereturn;
+
+        var ret_expr: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::Semicolon)) {
+            ret_expr = OptionalAstNodeIndex::None();
+        } else {
+            const expr = self.parse_expr();
+            if (expr.is_err()) ereturn expr;
+            ret_expr = expr.unwrap_ok().as_optional();
+
+            if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+        }
+        
+
+        const node = stmt::ReturnStmt::new(is_err, ret_expr);
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_break_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        self.advance();
+
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = stmt::BreakStmt::new();
+        const index = self.store_node(&node as *u32, @sizeof(node));
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_continue_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        self.advance();
+
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = stmt::ContinueStmt::new();
+        const index = self.store_node(&node as *u32, @sizeof(node));
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
