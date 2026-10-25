@@ -243,12 +243,62 @@ pub struct Parser {
             // TokenType::For => return self.parse_for_stmt();
             // TokenType::Switch => return self.parse_switch_stmt();
             TokenType::LeftBrace => return self.parse_block_stmt();
-            // TokenType::Return
-            // | TokenType::Ereturn => return self.parse_return_stmt();
-            // TokenType::Break => return self.parse_break_stmt();
-            // TokenType::Continue => return self.parse_continue_stmt();
+            TokenType::Return
+            | TokenType::Ereturn => return self.parse_return_stmt();
+            TokenType::Break => return self.parse_break_stmt();
+            TokenType::Continue => return self.parse_continue_stmt();
             else => return self.parse_assign_stmt();
         }
+    }
+
+    fn parse_return_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::ReturnStmt));
+        edefer self.unreserve_node(index);
+
+        self.advance();
+        const is_err = self.prev.type == TokenType::Ereturn;
+
+        var ret_expr: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::Semicolon)) {
+            ret_expr = OptionalAstNodeIndex::None();
+        } else {
+            const expr = self.parse_expr();
+            if (expr.is_err()) ereturn expr;
+            ret_expr = expr.unwrap_ok().as_optional();
+
+            if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+        }
+        
+
+        const node = stmt::ReturnStmt::new(is_err, ret_expr);
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_break_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        self.advance();
+
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = stmt::BreakStmt::new();
+        const index = self.store_node(&node as *u32, @sizeof(node));
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_continue_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        self.advance();
+
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = stmt::ContinueStmt::new();
+        const index = self.store_node(&node as *u32, @sizeof(node));
+        return Result::[AstNodeIndex, void]::Ok(index);
     }
 
     fn parse_assign_stmt(self: *Parser) Result[AstNodeIndex, void] {
