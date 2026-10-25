@@ -372,15 +372,13 @@ pub struct StructExpr {
 
 pub struct TupleExpr {
     type: AstNodeType;
-    pad: u8;
-    field_count: u8;
+    field_count: u16;
     span: SpanIndex;
     fields: AstExtraIndex; // list of AstNode (Expr)
 
-    pub fn new(span: SpanIndex, field_count: u8, fields: AstExtraIndex) TupleExpr {
+    pub fn new(span: SpanIndex, field_count: u16, fields: AstExtraIndex) TupleExpr {
         var self: TupleExpr = undefined;
         self.type = AstNodeType::TupleExpr;
-        self.pad = 0 as u8;
         self.field_count = field_count;
         self.span = span;
         self.fields = fields;

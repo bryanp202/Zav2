@@ -74,7 +74,7 @@ pub struct Parser {
     path: PathBuf;
     ast: Ast;
     submods: List[SubModule];
-    errors: List[Error];    
+    errors: List[Error];  
 
     fn new(interner: SymbolInterner, path: PathBuf, src: Slice[u8]) Parser {
         var self: Parser = undefined;
@@ -318,8 +318,7 @@ pub struct Parser {
 
         const { _0: stmts, _1: stmt_count } = self.store_extra(stmt_start);
         if (stmt_count > 4294967295 as u32) {
-            const path_slice = self.path.as_slice();
-            @abort("Block stmt len overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowBlock));
         }
 
         const node = stmt::BlockStmt::new(stmt_count as u32, stmts);
@@ -420,17 +419,16 @@ pub struct Parser {
             }
         }
         if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void); 
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
         const { _0: exprs, _1: expr_count } = self.store_extra(scratch_start);
         if (expr_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("ForStmt expression count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowFor));
         }
         self.clear_scratch(scratch_start);
 
         if (!self.eat(TokenType::Pipe, ErrorType::ExpectedPipe)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void); 
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
         while (true) {
             if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
@@ -445,7 +443,7 @@ pub struct Parser {
             if (!self.match(TokenType::Comma) or self.check(TokenType::Pipe)) break;
         }
         if (!self.eat(TokenType::Pipe, ErrorType::ExpectedPipe)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void); 
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
 
         const { _0: bindings, _1: binding_count } = self.store_extra_sized(
@@ -453,8 +451,7 @@ pub struct Parser {
             @sizeof(0 as ast::Identifier)
         );
         if (binding_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("ForStmt binding count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowFor));
         }
 
         const body = self.parse_stmt();
@@ -603,9 +600,8 @@ pub struct Parser {
         }
 
         const { _0: fields, _1: field_count } = self.store_extra(field_start);
-        if (field_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Tuple expr field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        if (field_count > 65535) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowTuple));
         }
         const node = expr::TupleExpr::new(self.store_span_since(token), field_count as u8, fields);
         self.set_node(index, &node as *u32);
@@ -644,8 +640,7 @@ pub struct Parser {
 
         const { _0: fields, _1: field_count } = self.store_extra_sized(field_start, @sizeof(0 as expr::StructExprField));
         if (field_count > 65535) {
-            const path_slice = self.path.as_slice();
-            @abort("Struct expr field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowStruct));
         }
 
         const node = expr::StructExpr::new(
@@ -682,9 +677,8 @@ pub struct Parser {
         }
 
         const { _0: entries, _1: entry_count } = self.store_extra(entry_start);
-        if (entry_count > 281474976710655 as u64) {
-            const path_slice = self.path.as_slice();
-            @abort("Array expr entry count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+        if (entry_count > 281474976710655) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowArray));
         }
 
         const node = expr::ArrayExpr::new(
@@ -722,8 +716,7 @@ pub struct Parser {
 
         const { _0: params, _1: param_count } = self.store_extra_sized(param_start, @sizeof(0 as ast::Parameter));
         if (param_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Generic expr param count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowParam));
         }
 
         var ret_type: OptionalAstNodeIndex = undefined;
@@ -771,8 +764,7 @@ pub struct Parser {
 
         const { _0: args, _1: arg_count } = self.store_extra(arg_start);
         if (arg_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Native expr arg count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowArg));
         }
 
         const node = expr::NativeExpr::new(
@@ -803,7 +795,7 @@ pub struct Parser {
             self.set_node(index, &generic_node as *u32);
 
             if (self.match(TokenType::LeftBrace)) return self.parse_struct_expr(name, index);
-            return Result::[AstNodeIndex, void]::Ok(index); 
+            return Result::[AstNodeIndex, void]::Ok(index);
         }
 
         const ident_node = ast::ty::IdentType::new(
@@ -840,8 +832,7 @@ pub struct Parser {
 
         const { _0: generics, _1: generic_count } = self.store_extra(generics_start);
         if (generic_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Generic expr param count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[expr::GenericExpr, void]::Err(self.error(ErrorType::OverflowGenericArg));
         }
         return Result::[expr::GenericExpr, void]::Ok(expr::GenericExpr::new(
             self.store_span_since(name),
@@ -900,8 +891,7 @@ pub struct Parser {
 
         const { _0: scopes, _1: scope_count } = self.store_extra(scopes_start);
         if (scope_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Scope depth overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowScope));
         }
         const node = expr::ScopedExpr::new(
             self.store_span_since(token),
@@ -911,7 +901,7 @@ pub struct Parser {
         );
         self.set_node(scope_index, &node as *u32);
         if (self.match(TokenType::LeftBrace)) return self.parse_struct_expr(token, scope_index);
-        return Result::[AstNodeIndex, void]::Ok(scope_index); 
+        return Result::[AstNodeIndex, void]::Ok(scope_index);
     }
 
     fn parse_primative_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
@@ -1027,8 +1017,7 @@ pub struct Parser {
 
         const { _0: args, _1: arg_count } = self.store_extra(arg_start);
         if (arg_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Call expr arg count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowArg));
         }
         const node = expr::CallExpr::new(self.store_span_since(start), arg_count as u8, operand, args);
         self.set_node(index, &node as *u32);
@@ -1176,8 +1165,7 @@ pub struct Parser {
 
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
         if (field_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Tuple pattern field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowPattern));
         }
         const node = ast::pattern::TuplePattern::new(
             self.store_span_since(token),
@@ -1230,8 +1218,7 @@ pub struct Parser {
 
         const {_0: field_index, _1: field_count } = self.store_extra_sized(field_start, @sizeof(0 as ast::pattern::DestructPatternField));
         if (field_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Destruct pattern field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowPattern));
         }
         const node = ast::pattern::DestructPattern::new(
             self.store_span_since(token),
@@ -1268,8 +1255,7 @@ pub struct Parser {
 
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
         if (field_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Array pattern entry count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowPattern));
         }
         const node = ast::pattern::ArrayPattern::new(
             self.store_span_since(token),
@@ -1399,8 +1385,7 @@ pub struct Parser {
 
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
         if (field_count > 65535) {
-            const path_slice = self.path.as_slice();
-            @abort("Tuple type field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowParam));
         }
 
         const ret_type = self.parse_type();
@@ -1436,8 +1421,7 @@ pub struct Parser {
         }
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
         if (field_count > 65535) {
-            const path_slice = self.path.as_slice();
-            @abort("Tuple type field count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowTuple));
         }
 
         const node = ast::ty::TupleType::new(
@@ -1459,13 +1443,13 @@ pub struct Parser {
                 ereturn Result::[AstNodeIndex, void]::Err(0 as void);
             }
 
-            const generic_node = generic.unwrap_ok(); 
+            const generic_node = generic.unwrap_ok();
             if (self.match(TokenType::Scope)) {
                 const generic_index = self.store_node(&generic_node as *u32, @sizeof(generic_node));
                 return self.parse_scoped_type(name, index, generic_index.as_optional());
             }
             self.set_node(index, &generic_node as *u32);
-            return Result::[AstNodeIndex, void]::Ok(index); 
+            return Result::[AstNodeIndex, void]::Ok(index);
         }
 
         const ident_node = ast::ty::IdentType::new(
@@ -1478,7 +1462,7 @@ pub struct Parser {
             return self.parse_scoped_type(name, scope_index, ident_index.as_optional());
         }
         const index = self.store_node(&ident_node as *u32, @sizeof(ident_node));
-        return Result::[AstNodeIndex, void]::Ok(index); 
+        return Result::[AstNodeIndex, void]::Ok(index);
 
     }
 
@@ -1502,8 +1486,7 @@ pub struct Parser {
 
         const { _0: generics, _1: generic_count } = self.store_extra(generics_start);
         if (generic_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Generic type param count overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[ast::ty::GenericType, void]::Err(self.error(ErrorType::OverflowGenericArg));
         }
         return Result::[ast::ty::GenericType, void]::Ok(ast::ty::GenericType::new(
             self.store_span_since(name),
@@ -1562,8 +1545,7 @@ pub struct Parser {
 
         const { _0: scopes, _1: scope_count } = self.store_extra(scopes_start);
         if (scope_count > 255) {
-            const path_slice = self.path.as_slice();
-            @abort("Scope depth overflow for module \"%.*s\"\n", path_slice.len, path_slice.ptr);
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowScope));
         }
         const node = ast::ty::ScopedType::new(
             self.store_span_since(token),
@@ -1572,7 +1554,7 @@ pub struct Parser {
             scopes,
         );
         self.set_node(scope_index, &node as *u32);
-        return Result::[AstNodeIndex, void]::Ok(scope_index); 
+        return Result::[AstNodeIndex, void]::Ok(scope_index);
     }
 
     /////////////////////
@@ -1589,6 +1571,14 @@ pub struct Parser {
         const start = self.curr.lexeme.ptr - self.src.ptr;
         self.errors.push(
             Error::new(type, start as u32, self.curr.lexeme.len as u32),
+        );
+    }
+
+    fn error_since(self: *Parser, token: Token, type: ErrorType) void {
+        const start = token.lexeme.ptr - self.src.ptr;
+        const len = self.curr.lexeme.ptr - token.lexeme.ptr + self.curr.lexeme.len;
+        self.errors.push(
+            Error::new(type, start as u32, len as u32),
         );
     }
 
@@ -1671,7 +1661,7 @@ pub struct Parser {
     /////////////
     fn store_span_since(self: *Parser, token: Token) SpanIndex {
         var index: SpanIndex = undefined;
-        const start = (token.lexeme.ptr - self.src.ptr) as u32; 
+        const start = (token.lexeme.ptr - self.src.ptr) as u32;
         const len = (self.prev.lexeme.ptr - token.lexeme.ptr + self.prev.lexeme.len) as u32;
         
         if (self.ast.spans.len > 4294967295) {

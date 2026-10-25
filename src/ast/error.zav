@@ -407,6 +407,17 @@ pub enum ErrorType {
     InvalidScientificNotation,
     InvalidScope,
     InvalidType,
+    OverflowBlock,
+    OverflowFor,
+    OverflowForBinding,
+    OverflowTuple,
+    OverflowStruct,
+    OverflowArray,
+    OverflowParam,
+    OverflowArg,
+    OverflowPattern,
+    OverflowGenericArg,
+    OverflowScope,
     UnclosedDelimiter,
     UnterminatedBlockComment,
     UnterminatedStringLiteral,
@@ -437,6 +448,16 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
         ErrorType::InvalidScientificNotation => msg = "invalid floating point scientific notation";
         ErrorType::InvalidScope => msg = "invalid scope";
         ErrorType::InvalidType => msg = "invalid type";
+        ErrorType::OverflowBlock => msg = "overflow of block statements (max: 2^32 - 1)";
+        ErrorType::OverflowFor => msg = "overflow of for statement expressions or bindings (max: 2^8 - 1)";
+        ErrorType::OverflowTuple => msg = "overflow of tuple expression fields (max: 2^16 - 1)";
+        ErrorType::OverflowStruct => msg = "overflow of struct expression fields (max: 2^16 - 1)";
+        ErrorType::OverflowArray => msg = "overflow of array expression entries (max: 2^48 - 1)";
+        ErrorType::OverflowParam => msg = "overflow of params (max: 2^8 - 1)";
+        ErrorType::OverflowArg => msg = "overflow of arguments (max: 2^8 - 1)";
+        ErrorType::OverflowPattern => msg = "overflow of pattern fields (max: 2^8 - 1)";
+        ErrorType::OverflowGenericArg => msg = "overflow of generic args (max: 2^8 - 1)";
+        ErrorType::OverflowScope => msg = "overflow of scopes (max: 2^8 - 1)";
         ErrorType::UnterminatedBlockComment => msg = "unterminated block comment";
         ErrorType::UnterminatedStringLiteral => msg = "unterminated string literal";
         ErrorType::UnexpectedSymbol => msg = "unexpected symbol";
