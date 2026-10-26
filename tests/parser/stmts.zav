@@ -1,4 +1,13 @@
 {
+    @printf(
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+    );
     for (1..1,) |_,_1,_2,_3,_4,_5,_6,_7,| {}
     {
     {return 1;}
@@ -17,4 +26,30 @@ while (true or false and true) {
     }
 } loop {
     cool;
-}}}
+}}
+
+{
+    compif (0 as T: void) return 0 as void;
+    else compif (0 as T: bool) return false; 
+    else compif (0 as T: u8) return 0 as u8;
+    else compif (0 as T: u16) return 0 as u16;
+    else compif (0 as T: u32) return 0 as u32;
+    else compif (0 as T: u64) return 0 as u64;
+    else compif (0 as T: i8) return 0 as i8;
+    else compif (0 as T: i16) return 0 as i16;
+    else compif (0 as T: i32) return 0 as i32;
+    else compif (0 as T: i64) return 0 as i64;
+    else compif (0 as T: f32) return 0 as f32;
+    else compif (0 as T: f64) return 0 as f64;
+    else return T::default();
+}
+
+switch (true) {
+    Wow::A
+    | Wow::[A, B]::B
+    | ::Wow::[A, B]::C => {}
+    then => {}
+    else => {}
+}
+
+}

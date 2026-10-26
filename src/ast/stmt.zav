@@ -227,39 +227,7 @@ pub struct IfStmt {
         ast.display_node(fmt, self.cond._private_index, indent);
         fmt.unsafe_cstr_ptr(")");
 
-        var sub_stmt_indent: u64 = undefined;
-        const then_branch_is_block = stmt_is_type(ast, self.then_branch._private_index, AstNodeType::BlockStmt);
-        if (then_branch_is_block) {
-            sub_stmt_indent = indent;
-            fmt.unsafe_cstr_ptr(" ");
-        } else {
-            sub_stmt_indent = indent + 1 as u8;
-            fmt.newline();
-            Ast::fmt_indent(fmt, sub_stmt_indent);
-        }
-        ast.display_node(fmt, self.then_branch._private_index, sub_stmt_indent);
-
-        if (self.else_branch.is_some()) {
-            if (then_branch_is_block) {
-                fmt.unsafe_cstr_ptr(" else ");
-            } else {
-                fmt.newline();
-                Ast::fmt_indent(fmt, indent);
-                fmt.unsafe_cstr_ptr("else");
-            }
-
-            if (
-                stmt_is_type(ast, self.else_branch._private_index, AstNodeType::BlockStmt)
-                or stmt_is_type(ast, self.else_branch._private_index, AstNodeType::IfStmt)
-            ) {
-                sub_stmt_indent = indent;
-            } else {
-                sub_stmt_indent = indent + 1 as u8;
-                fmt.newline();
-                Ast::fmt_indent(fmt, sub_stmt_indent);
-            }
-            ast.display_node(fmt, self.else_branch._private_index, sub_stmt_indent);
-        }
+        fmt_if_branches(fmt, self.then_branch, self.else_branch, ast, indent);
     }
 }
 
@@ -402,29 +370,52 @@ pub struct SwitchStmt {
     branch_count: u16;
     cond: AstNodeIndex;
     branches: AstExtraIndex; // list of AstNodes (SwitchBranchStmts)
+    then_branch: OptionalAstNodeIndex; // AstNode (stmt)
+    else_branch: OptionalAstNodeIndex; // AstNode (stmt)
 
-    pub fn new(branch_count: u16, cond: AstNodeIndex, branches: AstExtraIndex) SwitchStmt {
+    pub fn new(
+        branch_count: u16,
+        cond: AstNodeIndex,
+        branches: AstExtraIndex,
+        then_branch: OptionalAstNodeIndex,
+        else_branch: OptionalAstNodeIndex,
+    ) SwitchStmt {
         var self: SwitchStmt = undefined;
         self.type = AstNodeType::SwitchStmt;
         self.branch_count = branch_count;
         self.cond = cond;
         self.branches = branches;
+        self.then_branch = then_branch;
+        self.else_branch = else_branch;
         return self;
     }
 
     pub fn fmt(self: *const SwitchStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr("switch (");
+        ast.display_node(fmt, self.cond._private_index, indent);
         fmt.unsafe_cstr_ptr(") {");
+        const branch_indent = indent + 1 as u8;
         if (self.branch_count > 0) {
-            const branch_indent = indent + 1 as u8;
             for (0..self.branch_count, &ast.extra.items[self.branches._private_index]) |_, branch| {
                 fmt.newline();
                 Ast::fmt_indent(fmt, branch_indent);
                 ast.display_node(fmt, branch.*, branch_indent);
             }
-            fmt.newline();
-            Ast::fmt_indent(fmt, indent);
         }
+        if (self.then_branch.is_some()) {
+            fmt.newline();
+            Ast::fmt_indent(fmt, branch_indent);
+            fmt.unsafe_cstr_ptr("then => ");
+            ast.display_node(fmt, self.then_branch._private_index, branch_indent);
+        }
+        if (self.else_branch.is_some()) {
+            fmt.newline();
+            Ast::fmt_indent(fmt, branch_indent);
+            fmt.unsafe_cstr_ptr("else => ");
+            ast.display_node(fmt, self.else_branch._private_index, branch_indent);
+        }
+        fmt.newline();
+        Ast::fmt_indent(fmt, indent);
         fmt.unsafe_cstr_ptr("}");
     }
 }
@@ -455,6 +446,90 @@ pub struct SwitchBranchStmt {
         }
         fmt.unsafe_cstr_ptr(" => ");
         ast.display_node(fmt, self.body._private_index, indent);
+    }
+}
+
+pub struct CompifStmt {
+    type: AstNodeType;
+    pad: u8;
+    is_check_inverted: bool;
+    cond_expr: AstNodeIndex;
+    cond_match_type: OptionalAstNodeIndex;
+    then_branch: AstNodeIndex;
+    else_branch: OptionalAstNodeIndex;
+
+    pub fn new(
+        is_check_inverted: bool,
+        cond_expr: AstNodeIndex,
+        cond_match_type: OptionalAstNodeIndex,
+        then_branch: AstNodeIndex,
+        else_branch: OptionalAstNodeIndex,
+    ) CompifStmt {
+        var self: CompifStmt = undefined;
+        self.type = AstNodeType::CompifStmt;
+        self.pad = 0 as u8;
+        self.is_check_inverted = is_check_inverted;
+        self.cond_expr = cond_expr;
+        self.cond_match_type = cond_match_type;
+        self.then_branch = then_branch;
+        self.else_branch = else_branch;
+        return self;
+    }
+
+    pub fn fmt(self: *const CompifStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+        fmt.unsafe_cstr_ptr("compif (");
+        ast.display_node(fmt, self.cond_expr._private_index, indent);
+        if (self.cond_match_type.is_some()) {
+            fmt.unsafe_cstr_ptr(self.is_check_inverted ? ": !" as *const u8 : ": " as *const u8);
+            ast.display_node(fmt, self.cond_match_type._private_index, indent);
+        }
+        fmt.unsafe_cstr_ptr(")");
+
+        fmt_if_branches(fmt, self.then_branch, self.else_branch, ast, indent);
+    }
+}
+
+pub fn fmt_if_branches(
+    fmt: *Formatter,
+    then_branch: AstNodeIndex,
+    else_branch: OptionalAstNodeIndex,
+    ast: *const Ast,
+    indent: u64
+) void {
+    var sub_stmt_indent: u64 = undefined;
+    const then_branch_is_block = stmt_is_type(ast, then_branch._private_index, AstNodeType::BlockStmt);
+    if (then_branch_is_block) {
+        sub_stmt_indent = indent;
+        fmt.unsafe_cstr_ptr(" ");
+    } else {
+        sub_stmt_indent = indent + 1 as u8;
+        fmt.newline();
+        Ast::fmt_indent(fmt, sub_stmt_indent);
+    }
+    ast.display_node(fmt, then_branch._private_index, sub_stmt_indent);
+
+    if (else_branch.is_some()) {
+        if (then_branch_is_block) {
+            fmt.unsafe_cstr_ptr(" else");
+        } else {
+            fmt.newline();
+            Ast::fmt_indent(fmt, indent);
+            fmt.unsafe_cstr_ptr("else");
+        }
+
+        if (
+            stmt_is_type(ast, else_branch._private_index, AstNodeType::BlockStmt)
+            or stmt_is_type(ast, else_branch._private_index, AstNodeType::IfStmt)
+            or stmt_is_type(ast, else_branch._private_index, AstNodeType::CompifStmt)
+        ) {
+            sub_stmt_indent = indent;
+            fmt.unsafe_cstr_ptr(" ");
+        } else {
+            sub_stmt_indent = indent + 1 as u8;
+            fmt.newline();
+            Ast::fmt_indent(fmt, sub_stmt_indent);
+        }
+        ast.display_node(fmt, else_branch._private_index, sub_stmt_indent);
     }
 }
 

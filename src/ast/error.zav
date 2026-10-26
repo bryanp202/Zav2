@@ -385,6 +385,8 @@ struct LineNumCache {
 }
 
 pub enum ErrorType {
+    DuplicateElseBranch,
+    DuplicateThenBranch,
     ExpectedArrayLength,
     ExpectedLeftBrace,
     ExpectedRightBrace,
@@ -393,6 +395,7 @@ pub enum ErrorType {
     ExpectedLeftSquare,
     ExpectedRightSquare,
     ExpectedPipe,
+    ExpectedBigArrow,
     ExpectedColon,
     ExpectedDotDot,
     ExpectedEqual,
@@ -418,6 +421,7 @@ pub enum ErrorType {
     OverflowPattern,
     OverflowGenericArg,
     OverflowScope,
+    OverflowSwitch,
     UnclosedDelimiter,
     UnterminatedBlockComment,
     UnterminatedStringLiteral,
@@ -427,6 +431,8 @@ pub enum ErrorType {
 fn error_type_to_msg(type: ErrorType) *const u8 {
     var msg: *const u8 = nullptr; 
     switch (type) {
+        ErrorType::DuplicateElseBranch => msg = "duplicate else branch in switch statement";
+        ErrorType::DuplicateThenBranch => msg = "duplicate then branch in switch statement";
         ErrorType::ExpectedLeftParen => msg = "expected '('";
         ErrorType::ExpectedRightParen => msg = "expected ')'";
         ErrorType::ExpectedLeftBrace => msg = "expected '{'";
@@ -434,6 +440,7 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
         ErrorType::ExpectedLeftSquare => msg = "expected '['";
         ErrorType::ExpectedRightSquare => msg = "expected ']'";
         ErrorType::ExpectedPipe => msg = "expected '|'";
+        ErrorType::ExpectedBigArrow => msg = "expected '=>'";
         ErrorType::ExpectedColon => msg = "expected ':'";
         ErrorType::ExpectedDotDot => msg = "expected '..'";
         ErrorType::ExpectedEqual => msg = "expected '='";
@@ -458,6 +465,7 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
         ErrorType::OverflowPattern => msg = "overflow of pattern fields (max: 2^8 - 1)";
         ErrorType::OverflowGenericArg => msg = "overflow of generic args (max: 2^8 - 1)";
         ErrorType::OverflowScope => msg = "overflow of scopes (max: 2^8 - 1)";
+        ErrorType::OverflowSwitch => msg = "overflow of switch branch or literals (max: 2^16 - 1)";
         ErrorType::UnterminatedBlockComment => msg = "unterminated block comment";
         ErrorType::UnterminatedStringLiteral => msg = "unterminated string literal";
         ErrorType::UnexpectedSymbol => msg = "unexpected symbol";

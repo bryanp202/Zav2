@@ -124,6 +124,7 @@ pub struct Ast {
             AstNodeType::BlockStmt => (node as *stmt::BlockStmt).fmt(fmt, self, indent);
             AstNodeType::SwitchStmt => (node as *stmt::SwitchStmt).fmt(fmt, self, indent);
             AstNodeType::SwitchBranchStmt => (node as *stmt::SwitchBranchStmt).fmt(fmt, self, indent);
+            AstNodeType::CompifStmt => (node as *stmt::CompifStmt).fmt(fmt, self, indent);
             // item
             AstNodeType::DeclItem => (node as *item::DeclItem).fmt(fmt, self, indent);
             AstNodeType::ModuleItem => (node as *item::ModuleItem).fmt(fmt, self);
@@ -339,6 +340,7 @@ pub enum AstNodeType {
     BlockStmt,
     SwitchStmt,
     SwitchBranchStmt,
+    CompifStmt,
 
     /* expr */
     IfExpr,

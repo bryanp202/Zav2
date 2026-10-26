@@ -240,9 +240,10 @@ pub struct Parser {
     fn parse_stmt(self: *Parser) Result[AstNodeIndex, void] {
         switch (self.curr.type) {
             TokenType::If => return self.parse_if_stmt();
+            TokenType::Compif => return self.parse_compif_stmt();
             TokenType::While => return self.parse_while_stmt();
             TokenType::For => return self.parse_for_stmt();
-            // TokenType::Switch => return self.parse_switch_stmt();
+            TokenType::Switch => return self.parse_switch_stmt();
             TokenType::LeftBrace => return self.parse_block_stmt();
             TokenType::Return
             | TokenType::Ereturn => return self.parse_return_stmt();
@@ -331,14 +332,8 @@ pub struct Parser {
         edefer self.unreserve_node(index);
 
         self.advance();
-        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
-        const cond = self.parse_expr();
+        const cond = self.parse_expr_in_paren();
         if (cond.is_err()) ereturn cond;
-        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
 
         const then_branch = self.parse_stmt();
         if (then_branch.is_err()) ereturn then_branch;
@@ -357,19 +352,61 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
+    fn parse_compif_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::CompifStmt));
+        edefer self.unreserve_node(index);
+        
+        self.advance();
+        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const cond_expr = self.parse_expr();
+        if (cond_expr.is_err()) ereturn cond_expr;
+
+        var cond_match_type: OptionalAstNodeIndex = undefined;
+        var is_check_inverted: bool = undefined;
+        if (self.match(TokenType::Colon)) {
+            is_check_inverted = self.match(TokenType::Bang);
+            const type = self.parse_type();
+            if (type.is_err()) ereturn type;
+            cond_match_type = type.unwrap_ok().as_optional();
+        } else {
+            cond_match_type = OptionalAstNodeIndex::None();
+        }
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const then_branch = self.parse_stmt();
+        if (then_branch.is_err()) ereturn then_branch;
+
+        var else_branch: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::Else)) {
+            const stmt = self.parse_stmt();
+            if (stmt.is_err()) ereturn stmt;
+            else_branch = stmt.unwrap_ok().as_optional();
+        } else {
+            else_branch = OptionalAstNodeIndex::None();
+        }
+
+        const node = stmt::CompifStmt::new(
+            is_check_inverted,
+            cond_expr.unwrap_ok(),
+            cond_match_type,
+            then_branch.unwrap_ok(),
+            else_branch,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
     fn parse_while_stmt(self: *Parser) Result[AstNodeIndex, void] {
         const index = self.reserve_node(@sizeof(0 as stmt::WhileStmt));
         edefer self.unreserve_node(index);
 
         self.advance();
-        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
-        const cond = self.parse_expr();
+        const cond = self.parse_expr_in_paren();
         if (cond.is_err()) ereturn cond;
-        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
 
         const body = self.parse_stmt();
         if (body.is_err()) ereturn body;
@@ -468,6 +505,57 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
+    fn parse_switch_stmt(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as stmt::SwitchStmt));
+        edefer self.unreserve_node(index);
+        const branch_start = self.start_scratch();
+        defer self.clear_scratch(branch_start);
+
+        self.advance();
+        const cond = self.parse_expr_in_paren();
+        if (cond.is_err()) ereturn cond;
+        if (!self.eat(TokenType::LeftBrace, ErrorType::ExpectedLeftBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        var then_branch = OptionalAstNodeIndex::None();
+        var else_branch = OptionalAstNodeIndex::None();
+        while (!self.check(TokenType::RightBrace)) {
+            const branch_start = self.curr;
+            const branch = self.parse_switch_branch();
+            if (branch.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            const { _0: branch_index, _1: branch_type } = branch.unwrap_ok();
+            switch (branch_type) {
+                TokenType::Then => {
+                    if (then_branch.is_some()) self.error_since(branch_start, ErrorType::DuplicateThenBranch);
+                    else then_branch = branch_index.as_optional();
+                }
+                TokenType::Else => {
+                    if (else_branch.is_some()) self.error_since(branch_start, ErrorType::DuplicateThenBranch);
+                    else else_branch = branch_index.as_optional();
+                }
+                else => self.scratch.push(branch_index._private_index);
+            }
+        }
+
+        if (!self.eat(TokenType::RightBrace, ErrorType::ExpectedRightBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const { _0: branches, _1: branch_count } = self.store_extra(branch_start);
+        if (branch_count > 65535) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowSwitch));
+        }
+        const node = stmt::SwitchStmt::new(
+            branch_count as u16,
+            cond.unwrap_ok(),
+            branches,
+            then_branch,
+            else_branch,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
     fn parse_return_stmt(self: *Parser) Result[AstNodeIndex, void] {
         const index = self.reserve_node(@sizeof(0 as stmt::ReturnStmt));
         edefer self.unreserve_node(index);
@@ -518,6 +606,63 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
+    fn parse_expr_in_paren(self: *Parser) Result[AstNodeIndex, void] {
+        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const expr = self.parse_expr();
+        if (expr.is_err()) ereturn expr;
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        return expr;
+    }
+
+    fn parse_switch_branch(self: *Parser) Result[Tuple2[AstNodeIndex, TokenType], void] {
+        const branch_type = self.curr.type;
+        if (self.match(TokenType::Then) or self.match(TokenType::Else)) {
+            if (!self.eat(TokenType::BigArrow, ErrorType::ExpectedBigArrow)) {
+                ereturn Result::[Tuple2[AstNodeIndex, TokenType], void]::Err(0 as void);
+            }
+            const stmt = self.parse_stmt();
+            if (stmt.is_err()) ereturn Result::[Tuple2[AstNodeIndex, TokenType], void]::Err(0 as void);
+            return Result::[Tuple2[AstNodeIndex, TokenType], void]::Ok(
+                Tuple2::[AstNodeIndex, TokenType]::new(stmt.unwrap_ok(), branch_type)
+            );
+        }
+
+        const index = self.reserve_node(@sizeof(0 as stmt::SwitchBranchStmt));
+        edefer self.unreserve_node(index);
+        const literal_start = self.start_scratch();
+        defer self.clear_scratch(literal_start);
+
+        const first_literal = self.parse_literal_expr(self.advance());
+        if (first_literal.is_err()) ereturn Result::[Tuple2[AstNodeIndex, TokenType], void]::Err(0 as void);
+        self.scratch.push(first_literal.unwrap_ok()._private_index);
+
+        while (self.match(TokenType::Pipe)) {
+            const literal = self.parse_literal_expr(self.advance());
+            if (literal.is_err()) ereturn Result::[Tuple2[AstNodeIndex, TokenType], void]::Err(0 as void);
+            self.scratch.push(literal.unwrap_ok()._private_index);
+        }
+        const { _0: literals, _1: literal_count } = self.store_extra(literal_start);
+        if (literal_count > 65535) {
+            ereturn Result::[Tuple2[AstNodeIndex, TokenType], void]::Err(self.error(ErrorType::OverflowSwitch));
+        }
+
+        if (!self.eat(TokenType::BigArrow, ErrorType::ExpectedBigArrow)) {
+            ereturn Result::[Tuple2[AstNodeIndex, TokenType], void]::Err(0 as void);
+        }
+        const body = self.parse_stmt();
+        if (body.is_err()) ereturn Result::[Tuple2[AstNodeIndex, TokenType], void]::Err(0 as void);
+
+        const node = stmt::SwitchBranchStmt::new(literal_count as u16, literals, body.unwrap_ok());
+        self.set_node(index, &node as *u32);
+        return Result::[Tuple2[AstNodeIndex, TokenType], void]::Ok(
+            Tuple2::[AstNodeIndex, TokenType]::new(index, branch_type)
+        );
+    }
+
     ////////////////////////
     // Expression Parsing //
     ////////////////////////
@@ -549,13 +694,7 @@ pub struct Parser {
             TokenType::ArrayType => return self.parse_array_expr(token);
             TokenType::Pipe => return self.parse_lambda_expr(token);
             TokenType::Native => return self.parse_native_expr(token);
-            TokenType::Identifier => return self.parse_ident_expr(token);
-            TokenType::Scope => return self.parse_scoped_expr(
-                token,
-                self.reserve_node(@sizeof(0 as expr::ScopedExpr)),
-                OptionalAstNodeIndex::None(),
-            );
-            else => return self.parse_primative_expr(token);
+            else => return self.parse_literal_expr(token);
         }
     }
 
@@ -775,6 +914,18 @@ pub struct Parser {
         );
         self.set_node(index, &node as *u32);
         return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_literal_expr(self: *Parser, token: Token) Result[AstNodeIndex, void] {
+        switch (token.type) {
+            TokenType::Identifier => return self.parse_ident_expr(token);
+            TokenType::Scope => return self.parse_scoped_expr(
+                token,
+                self.reserve_node(@sizeof(0 as expr::ScopedExpr)),
+                OptionalAstNodeIndex::None(),
+            );
+            else => return self.parse_primative_expr(token);
+        }
     }
 
     fn parse_ident_expr(self: *Parser, name: Token) Result[AstNodeIndex, void] {
@@ -1576,7 +1727,7 @@ pub struct Parser {
 
     fn error_since(self: *Parser, token: Token, type: ErrorType) void {
         const start = token.lexeme.ptr - self.src.ptr;
-        const len = self.curr.lexeme.ptr - token.lexeme.ptr + self.curr.lexeme.len;
+        const len = self.prev.lexeme.ptr - token.lexeme.ptr + self.prev.lexeme.len;
         self.errors.push(
             Error::new(type, start as u32, len as u32),
         );
