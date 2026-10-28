@@ -51,6 +51,7 @@ pub struct Ast {
     }
 
     pub fn free(self: *const Ast) void {
+        self.interner.free();
         self.nodes.free();
         self.extra.free();
         self.spans.free();
@@ -126,7 +127,7 @@ pub struct Ast {
             AstNodeType::SwitchBranchStmt => (node as *stmt::SwitchBranchStmt).fmt(fmt, self, indent);
             AstNodeType::CompifStmt => (node as *stmt::CompifStmt).fmt(fmt, self, indent);
             // item
-            AstNodeType::DeclItem => (node as *item::DeclItem).fmt(fmt, self, indent);
+            AstNodeType::DeclItem => (node as *item::DeclItem).fmt(fmt, self, index, indent);
             AstNodeType::ModuleItem => (node as *item::ModuleItem).fmt(fmt, self);
             AstNodeType::FnItem => (node as *item::FnItem).fmt(fmt, self, indent);
             AstNodeType::StructItem => (node as *item::StructItem).fmt(fmt, self, indent);
@@ -140,7 +141,7 @@ pub struct Ast {
             AstNodeType::UseTreeNested => (node as *item::UseTreeNested).fmt(fmt, self, indent);
             // other
             AstNodeType::Poison => (node as *AstPoison).fmt(fmt);
-            else => @abort("unsupported node type: %llu\n", type);
+            else => @abort("unsupported node type: %llu at index %llu\n", type, index);
         }
     }
 }
@@ -239,20 +240,40 @@ pub struct AstExtraIndex {
 
 pub struct RootNode {
     type: AstNodeType;
-    start: OptionalAstNodeIndex;
+    pad: u16;
+    item_count: u32;
+    items: AstExtraIndex;
 
-    pub fn new(start: OptionalAstNodeIndex) RootNode {
+    pub fn new(item_count: u32, items: AstExtraIndex) RootNode {
         var self: RootNode = undefined;
         self.type = AstNodeType::Root;
-        self.start = start;
+        self.pad = 0 as u16;
+        self.item_count = item_count;
+        self.items = items;
         return self;
     }
 
     pub fn fmt(self: *const RootNode, fmt: *Formatter, ast: *const Ast) void {
-        if (self.start.is_some()) {
-            ast.display_node(fmt, self.start._private_index, 0 as u64);
-        } else {
+        if (self.item_count == 0) {
             fmt.unsafe_cstr_ptr("[empty]");
+            fmt.newline();
+            return;
+        }
+
+        const first_item = &ast.extra.items[self.items._private_index];
+        ast.display_node(fmt, first_item.*, 0 as u64);
+        fmt.newline();
+
+        for (1..self.item_count, &first_item[1]) |_, item| {
+            const type = (&ast.nodes.items[item.*] as *const RootNode).type;
+            if (type == AstNodeType::FnItem
+                or type == AstNodeType::UnionItem
+                or type == AstNodeType::StructItem
+                or type == AstNodeType::EnumItem) {
+                fmt.newline();
+            }
+            ast.display_node(fmt, item.*, 0 as u64);
+            fmt.newline();
         }
     }
 }
