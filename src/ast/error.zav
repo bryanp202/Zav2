@@ -403,6 +403,7 @@ pub enum ErrorType {
     ExpectedInteger,
     ExpectedSemicolon,
     ExpectedQuestionMark,
+    InvalidItem,
     InvalidCharLiteral,
     InvalidDigitSeperator,
     InvalidExpr,
@@ -410,6 +411,10 @@ pub enum ErrorType {
     InvalidScientificNotation,
     InvalidScope,
     InvalidType,
+    OverflowItem,
+    OverflowEnum,
+    OverflowGenericParam,
+    OverflowWhere,
     OverflowBlock,
     OverflowFor,
     OverflowForBinding,
@@ -448,6 +453,7 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
         ErrorType::ExpectedSemicolon => msg = "expected ';'";
         ErrorType::ExpectedIdentifier => msg = "expected an identifier";
         ErrorType::ExpectedInteger => msg = "expected integer literal";
+        ErrorType::InvalidItem => msg = "invalid global level item";
         ErrorType::InvalidCharLiteral => msg = "invalid char literal";
         ErrorType::InvalidDigitSeperator => msg = "expected digit seperator to be between two digits";
         ErrorType::InvalidExpr => msg = "invalid expression";
@@ -455,6 +461,10 @@ fn error_type_to_msg(type: ErrorType) *const u8 {
         ErrorType::InvalidScientificNotation => msg = "invalid floating point scientific notation";
         ErrorType::InvalidScope => msg = "invalid scope";
         ErrorType::InvalidType => msg = "invalid type";
+        ErrorType::OverflowItem => msg = "overflow of global items (max: 2^32 - 1)";
+        ErrorType::OverflowEnum => msg = "overflow of enum variants (max: 2^32 - 1)";
+        ErrorType::OverflowGenericParam => msg = "overflow of generic params (max: 2^8 - 1)";
+        ErrorType::OverflowWhere => msg = "overflow of where clauses (max: 2^8 - 1)";
         ErrorType::OverflowBlock => msg = "overflow of block statements (max: 2^32 - 1)";
         ErrorType::OverflowFor => msg = "overflow of for statement expressions or bindings (max: 2^8 - 1)";
         ErrorType::OverflowTuple => msg = "overflow of tuple expression fields (max: 2^16 - 1)";

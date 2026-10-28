@@ -15,14 +15,13 @@ pub struct DeclItem {
     type: AstNodeType;
     public: bool;
     mutable: bool;
-    pattern: AstNodeIndex;
+    // pattern: AstNodeIndex; (always +1);
     ty: OptionalAstNodeIndex;
     expr: OptionalAstNodeIndex;
 
     pub fn new(
         public: bool,
         mutable: bool,
-        pattern: AstNodeIndex,
         ty: OptionalAstNodeIndex,
         expr: OptionalAstNodeIndex,
     ) DeclItem {
@@ -30,18 +29,17 @@ pub struct DeclItem {
         self.type = AstNodeType::DeclItem;
         self.public = public;
         self.mutable = mutable;
-        self.pattern = pattern;
         self.ty = ty;
         self.expr = expr;
         return self;
     }
 
-    pub fn fmt(self: *const DeclItem, fmt: *Formatter, ast: *const Ast, indent: u64) void {
+    pub fn fmt(self: *const DeclItem, fmt: *Formatter, ast: *const Ast, index: u64, indent: u64) void {
         if (self.public) {
             fmt.unsafe_cstr_ptr("pub ");
         }
         fmt.unsafe_cstr_ptr(self.mutable ? "var " as *const u8 : "const " as *const u8);
-        ast.display_node(fmt, self.pattern._private_index, indent);
+        ast.display_next_node(fmt, index, @sizeof(self.*), indent);
         if (self.ty.is_some()) {
             fmt.unsafe_cstr_ptr(": ");
             ast.display_node(fmt, self.ty._private_index, indent);
@@ -85,38 +83,44 @@ pub struct ModuleItem {
 
 pub struct FnItem {
     type: AstNodeType;
+    pad: u16;
     public: bool;
     generic_count: u8;
-    param_count: u16;
-    pad: u16;
+    param_count: u8;
+    where_count: u8;
     name_span: SpanIndex;
     name_sym: Symbol;
     generics: AstExtraIndex; // list of Identifier
     params: AstExtraIndex; // list of Parameter
+    wheres: AstExtraIndex; // list of AstNode (exprs)
     ret_type: AstNodeIndex;
     body: AstNodeIndex;
 
     pub fn new(
         public: bool,
         generic_count: u8,
-        param_count: u16,
+        param_count: u8,
+        where_count: u8,
         name_span: SpanIndex,
         name_sym: Symbol,
         generics: AstExtraIndex,
         params: AstExtraIndex,
+        wheres: AstExtraIndex,
         ret_type: AstNodeIndex,
         body: AstNodeIndex,
     ) FnItem {
         var self: FnItem = undefined;
         self.type = AstNodeType::FnItem;
+        self.pad = 0 as u16;
         self.public = public;
         self.generic_count = generic_count;
         self.param_count = param_count;
-        self.pad = 0 as u16;
+        self.where_count = where_count;
         self.name_span = name_span;
         self.name_sym = name_sym;
         self.generics = generics;
         self.params = params;
+        self.wheres = wheres;
         self.ret_type = ret_type;
         self.body = body;
         return self;
@@ -149,9 +153,26 @@ pub struct FnItem {
                 param.fmt(fmt, ast, indent);
             }
         }
-        fmt.unsafe_cstr_ptr(")");
+        fmt.unsafe_cstr_ptr(") ");
         ast.display_node(fmt, self.ret_type._private_index, indent);
-        fmt.unsafe_cstr_ptr(" ");
+
+        if (self.where_count > 0) {
+            fmt.newline();
+            Ast::fmt_indent(fmt, indent);
+            fmt.unsafe_cstr_ptr("where");
+            fmt.newline();
+
+            const where_clause_indent = indent + 1 as u8;
+            const first_where = &ast.extra.items[self.params._private_index];
+            for (0..self.where_count, first_where) |_, where_clause| {
+                Ast::fmt_indent(fmt, where_clause_indent);
+                ast.display_node(fmt, where_clause.*, indent);
+                fmt.unsafe_cstr_ptr(",");
+                fmt.newline();
+            }
+        } else {
+            fmt.unsafe_cstr_ptr(" ");
+        }
         ast.display_node(fmt, self.body._private_index, indent);
     }
 }
@@ -322,8 +343,9 @@ pub struct EnumItem {
             const variant_indent = indent + 1 as u8;
             for (0..self.variant_count, &ast.extra.items[self.variants._private_index] as *Identifier) |_, ident| {
                 fmt.newline();
-                Ast::fmt_indent(fmt, indent);
+                Ast::fmt_indent(fmt, variant_indent);
                 ident.fmt(fmt, ast);
+                fmt.unsafe_cstr_ptr(",");
             }
             fmt.newline();
             Ast::fmt_indent(fmt, indent);

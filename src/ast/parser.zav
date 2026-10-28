@@ -33,6 +33,7 @@ use super::expr::BinaryOp;
 use super::expr::PrimativeType;
 use super::stmt;
 use super::stmt::AssignOp;
+use super::item;
 
 pub struct ParseResult {
     module: UnresolvedModule;
@@ -113,31 +114,33 @@ pub struct Parser {
 
     fn parse_ast(self: *Parser) ParseResult {
         const root_index = self.reserve_node(@sizeof(0 as ast::RootNode));
-        var first_node: OptionalAstNodeIndex = undefined;
+        const items_start = self.start_scratch();
+        defer self.clear_scratch(items_start);
 
         self.advance();
-        const expr = self.parse_declaration();
-        if (expr.is_err()) {
-            self.local_synchronize();
-            first_node = OptionalAstNodeIndex::None();
-        } else {
-            first_node = expr.unwrap_ok().as_optional();
-        }
-        const root_node = ast::RootNode::new(first_node);
-        self.set_node(root_index, &root_node as *u32);
 
         while (!self.at_end()) {
-            const expr = self.parse_declaration();
-            if (expr.is_err()) {
-                self.local_synchronize();
+            const item = self.parse_item();
+            if (item.is_err()) {
+                self.global_synchronize();
+                continue;
             }
+            self.scratch.push(item.unwrap_ok()._private_index);
         }
+
+        const { _0: items, _1: total_items } = self.store_extra(items_start);
+        var item_count: u32 = undefined;
+        if (item_count > 281474976710655 as u64) {
+            self.error(ErrorType::OverflowItem);
+            item_count = 281474976710655 as u32;
+        } else {
+            item_count = total_items as u32;
+        }
+        const root_node = ast::RootNode::new(item_count, items);
+        self.set_node(root_index, &root_node as *u32);
 
         var fmt = ::std::fmt::Formatter::new_for_terminal();
         defer fmt.free();
-        fmt.unsafe_cstr_ptr("storage (bytes): ");
-        fmt.uint((self.ast.nodes.len * 4 + self.ast.extra.len * 4 + self.ast.spans.len * 8) as u64);
-        fmt.newline();
         self.ast.nodes.fmt(&fmt);
         fmt.newline();
         self.ast.extra.fmt(&fmt);
@@ -145,6 +148,9 @@ pub struct Parser {
         self.ast.spans.fmt(&fmt);
         fmt.newline();
         self.ast.fmt(&fmt);
+        fmt.newline();
+        fmt.unsafe_cstr_ptr("storage (bytes): ");
+        fmt.uint((self.ast.nodes.len * 4 + self.ast.extra.len * 4 + self.ast.spans.len * 8) as u64);
         fmt.newline();
         fmt.print();
 
@@ -162,6 +168,234 @@ pub struct Parser {
     ///////////////////////
     //    Item Parsing   //
     ///////////////////////
+    fn parse_item(self: *Parser) Result[AstNodeIndex, void] {
+        const is_public = self.match(TokenType::Pub);
+        const token = self.advance();
+        switch (token.type) {
+            TokenType::Const
+            | TokenType::Var => return self.parse_decl_item(is_public);
+            TokenType::Enum => return self.parse_enum_item(is_public);
+            TokenType::Mod => return self.parse_mod_item(is_public);
+            TokenType::Fn => return self.parse_fn_item(is_public);
+            // TokenType::Union => return self.parse_union_item(is_public);
+            // TokenType::Struct => return self.parse_struct_item(is_public);
+            // TokenType::Use => return self.parse_use_item(is_public);
+            else => ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::InvalidItem));
+        }
+    }
+
+    pub fn parse_decl_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as item::DeclItem));
+        edefer self.unreserve_node(index);
+
+        const is_mutable = self.prev.type == TokenType::Var;
+        const pattern = self.parse_pattern();
+        if (pattern.is_err()) ereturn pattern;
+
+        var decl_type: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::Colon)) {
+            const type = self.parse_type();
+            if (type.is_err()) ereturn type;
+            decl_type = type.unwrap_ok().as_optional();
+        } else {
+            decl_type = OptionalAstNodeIndex::None();
+        }
+
+        if (!self.eat(TokenType::Equal, ErrorType::ExpectedEqual)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        var decl_expr: OptionalAstNodeIndex = undefined;
+        if (self.match(TokenType::Undefined)) {
+            decl_expr = OptionalAstNodeIndex::None();
+        } else {
+            const expr = self.parse_expr();
+            if (expr.is_err()) ereturn expr;
+            decl_expr = expr.unwrap_ok().as_optional();
+        }
+
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const node = item::DeclItem::new(
+            is_public,
+            is_mutable,
+            decl_type,
+            decl_expr,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    pub fn parse_mod_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+        const identifier = self.parse_identifier();
+        if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const name = identifier.unwrap_ok();
+
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const node = item::ModuleItem::new(is_public, name.span, name.sym);
+        const index = self.store_node(&node as *u32, @sizeof(node));
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    pub fn parse_enum_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+        const variant_start = self.start_scratch();
+        defer self.clear_scratch(variant_start);
+
+        const start = self.prev;
+        const identifier = self.parse_identifier();
+        if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const name = identifier.unwrap_ok();
+
+        if (!self.eat(TokenType::LeftBrace, ErrorType::ExpectedLeftBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        while (!self.check(TokenType::RightBrace)) {
+            const identifier = self.parse_identifier();
+            if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            const variant = identifier.unwrap_ok();
+            self.push_scratch_chunks(&variant as *u32, @sizeof(variant));
+
+            if (!self.match(TokenType::Comma)) break;
+        }
+        if (!self.eat(TokenType::RightBrace, ErrorType::ExpectedRightBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const { _0: variants, _1: variant_count } = self.store_extra_sized(
+            variant_start,
+            @sizeof(0 as ast::Identifier)
+        );
+        if (variant_count > 281474976710655 as u64) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error_since(start, ErrorType::OverflowEnum));
+        }
+        const node = item::EnumItem::new(
+            is_public,
+            name.span,
+            name.sym,
+            variant_count as u32,
+            variants,
+        );
+        const index = self.store_node(&node as *u32, @sizeof(node));
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    pub fn parse_fn_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as item::FnItem));
+        edefer self.unreserve_node(index);
+        const scratch_start = self.start_scratch();
+        defer self.clear_scratch(scratch_start);
+
+        const identifier = self.parse_identifier();
+        if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const name = identifier.unwrap_ok();
+
+        const generic_param_start = self.curr;
+        if (self.match(TokenType::LeftSquare)) {
+            while (!self.check(TokenType::RightSquare)) {
+                const identifier = self.parse_identifier();
+                if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+                const generic_param = identifier.unwrap_ok();
+                self.push_scratch_chunks(&generic_param as *u32, @sizeof(generic_param));
+
+                if (!self.match(TokenType::Comma)) break;
+            }
+            if (!self.eat(TokenType::RightSquare, ErrorType::ExpectedRightSquare)) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+        }
+        const { _0: generic_params, _1: generic_count } = self.store_extra_sized(
+            scratch_start,
+            @sizeof(0 as ast::Identifier),
+        );
+        if (generic_count > 255 as u64) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error_since(
+                generic_param_start,
+                ErrorType::OverflowGenericParam)
+            );
+        }
+        self.clear_scratch(scratch_start);
+
+
+        if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const args_start = self.prev;
+        while (!self.check(TokenType::RightParen)) {
+            const pattern = self.parse_pattern();
+            if (pattern.is_err()) ereturn pattern;
+            if (!self.eat(TokenType::Colon, ErrorType::ExpectedColon)) {
+                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            }
+            const type = self.parse_type();
+            if (type.is_err()) ereturn type;
+
+            const param = ast::Parameter::new(pattern.unwrap_ok(), type.unwrap_ok());
+            self.push_scratch_chunks(&param as *u32, @sizeof(param));
+
+            if (!self.match(TokenType::Comma)) break;
+        }
+        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const { _0: params, _1: param_count } = self.store_extra_sized(
+            scratch_start,
+            @sizeof(0 as ast::Parameter),
+        );
+        if (param_count > 255 as u64) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error_since(
+                generic_param_start,
+                ErrorType::OverflowParam)
+            );
+        }
+        self.clear_scratch(scratch_start);
+
+        const ret_type = self.parse_type();
+        if (ret_type.is_err()) ereturn ret_type;
+
+        if (self.match(TokenType::Where)) {
+            while (!self.check(TokenType::LeftBrace)) {
+                const expr = self.parse_expr();
+                if (expr.is_err()) ereturn expr;
+                self.scratch.push(expr.unwrap_ok()._private_index);
+
+                if (!self.match(TokenType::Comma)) break;
+            }
+        }
+        if (!self.eat(TokenType::LeftBrace, ErrorType::ExpectedLeftBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        const { _0: wheres, _1: where_count } = self.store_extra(scratch_start);
+        if (where_count > 255 as u64) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error_since(
+                generic_param_start,
+                ErrorType::OverflowWhere)
+            );
+        }
+        const body = self.parse_block_stmt();
+        if (body.is_err()) ereturn body;
+
+        const node = item::FnItem::new(
+            is_public,
+            generic_count as u8,
+            param_count as u8,
+            where_count as u8,
+            name.span,
+            name.sym,
+            generic_params,
+            params,
+            wheres,
+            ret_type.unwrap_ok(),
+            body.unwrap_ok(),
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
 
     ///////////////////////
     // Statement Parsing //
@@ -184,14 +418,10 @@ pub struct Parser {
         self.advance();
         const is_err = self.prev.type == TokenType::Edefer;
 
-        const expr = self.parse_expr();
-        if (expr.is_err()) ereturn expr;
+        const defered_stmt = self.parse_stmt();
+        if (defered_stmt.is_err()) ereturn defered_stmt;
 
-        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
-
-        const node = stmt::DeferStmt::new(is_err, expr.unwrap_ok());
+        const node = stmt::DeferStmt::new(is_err, defered_stmt.unwrap_ok());
         self.set_node(index, &node as *u32);
         return Result::[AstNodeIndex, void]::Ok(index);
     }
@@ -244,11 +474,14 @@ pub struct Parser {
             TokenType::While => return self.parse_while_stmt();
             TokenType::For => return self.parse_for_stmt();
             TokenType::Switch => return self.parse_switch_stmt();
-            TokenType::LeftBrace => return self.parse_block_stmt();
             TokenType::Return
             | TokenType::Ereturn => return self.parse_return_stmt();
             TokenType::Break => return self.parse_break_stmt();
             TokenType::Continue => return self.parse_continue_stmt();
+            TokenType::LeftBrace => {
+                self.advance();
+                return self.parse_block_stmt();
+            }
             else => return self.parse_assign_stmt();
         }
     }
@@ -303,7 +536,6 @@ pub struct Parser {
         const stmt_start = self.start_scratch();
         defer self.clear_scratch(stmt_start);
 
-        self.advance();
         while (!self.check(TokenType::RightBrace) and !self.at_end()) {
             const stmt = self.parse_declaration();
             if (stmt.is_err()) {
@@ -459,7 +691,7 @@ pub struct Parser {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
         const { _0: exprs, _1: expr_count } = self.store_extra(scratch_start);
-        if (expr_count > 255) {
+        if (expr_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowFor));
         }
         self.clear_scratch(scratch_start);
@@ -468,13 +700,9 @@ pub struct Parser {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
         while (true) {
-            if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
-                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-            }
-            const binding = ast::Identifier::new(
-                self.store_span_since(self.prev),
-                self.ast.interner.intern(self.prev.lexeme),
-            );
+            const identifier = self.parse_identifier();
+            if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            const binding = identifier.unwrap_ok();
             self.push_scratch_chunks(&binding as *u32, @sizeof(binding));
 
             if (!self.match(TokenType::Comma) or self.check(TokenType::Pipe)) break;
@@ -487,7 +715,7 @@ pub struct Parser {
             scratch_start,
             @sizeof(0 as ast::Identifier)
         );
-        if (binding_count > 255) {
+        if (binding_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowFor));
         }
 
@@ -542,7 +770,7 @@ pub struct Parser {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
         const { _0: branches, _1: branch_count } = self.store_extra(branch_start);
-        if (branch_count > 65535) {
+        if (branch_count > 65535 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowSwitch));
         }
         const node = stmt::SwitchStmt::new(
@@ -646,7 +874,7 @@ pub struct Parser {
             self.scratch.push(literal.unwrap_ok()._private_index);
         }
         const { _0: literals, _1: literal_count } = self.store_extra(literal_start);
-        if (literal_count > 65535) {
+        if (literal_count > 65535 as u64) {
             ereturn Result::[Tuple2[AstNodeIndex, TokenType], void]::Err(self.error(ErrorType::OverflowSwitch));
         }
 
@@ -739,7 +967,7 @@ pub struct Parser {
         }
 
         const { _0: fields, _1: field_count } = self.store_extra(field_start);
-        if (field_count > 65535) {
+        if (field_count > 65535 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowTuple));
         }
         const node = expr::TupleExpr::new(self.store_span_since(token), field_count as u8, fields);
@@ -754,11 +982,9 @@ pub struct Parser {
         defer self.clear_scratch(field_start);
 
         while (!self.check(TokenType::RightBrace)) {
-            if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
-                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-            }
-            const field_name_span = self.store_span_since(self.prev);
-            const field_name_sym = self.ast.interner.intern(self.prev.lexeme);
+            const identifier = self.parse_identifier();
+            if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            const field_name = identifier.unwrap_ok();
             if (!self.eat(TokenType::Colon, ErrorType::ExpectedColon)) {
                 ereturn Result::[AstNodeIndex, void]::Err(0 as void);
             }
@@ -766,8 +992,8 @@ pub struct Parser {
             if (field_expr.is_err()) ereturn field_expr;
 
             const field = expr::StructExprField::new(
-                field_name_span,
-                field_name_sym,
+                field_name.span,
+                field_name.sym,
                 field_expr.unwrap_ok(),
             );
             self.push_scratch_chunks(&field as *u32, @sizeof(field));
@@ -778,7 +1004,7 @@ pub struct Parser {
         }
 
         const { _0: fields, _1: field_count } = self.store_extra_sized(field_start, @sizeof(0 as expr::StructExprField));
-        if (field_count > 65535) {
+        if (field_count > 65535 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowStruct));
         }
 
@@ -816,7 +1042,7 @@ pub struct Parser {
         }
 
         const { _0: entries, _1: entry_count } = self.store_extra(entry_start);
-        if (entry_count > 281474976710655) {
+        if (entry_count > 281474976710655 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowArray));
         }
 
@@ -854,7 +1080,7 @@ pub struct Parser {
         }
 
         const { _0: params, _1: param_count } = self.store_extra_sized(param_start, @sizeof(0 as ast::Parameter));
-        if (param_count > 255) {
+        if (param_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowParam));
         }
 
@@ -902,7 +1128,7 @@ pub struct Parser {
         }
 
         const { _0: args, _1: arg_count } = self.store_extra(arg_start);
-        if (arg_count > 255) {
+        if (arg_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowArg));
         }
 
@@ -982,7 +1208,7 @@ pub struct Parser {
         }
 
         const { _0: generics, _1: generic_count } = self.store_extra(generics_start);
-        if (generic_count > 255) {
+        if (generic_count > 255 as u64) {
             ereturn Result::[expr::GenericExpr, void]::Err(self.error(ErrorType::OverflowGenericArg));
         }
         return Result::[expr::GenericExpr, void]::Ok(expr::GenericExpr::new(
@@ -1041,7 +1267,7 @@ pub struct Parser {
         }
 
         const { _0: scopes, _1: scope_count } = self.store_extra(scopes_start);
-        if (scope_count > 255) {
+        if (scope_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowScope));
         }
         const node = expr::ScopedExpr::new(
@@ -1167,7 +1393,7 @@ pub struct Parser {
         }
 
         const { _0: args, _1: arg_count } = self.store_extra(arg_start);
-        if (arg_count > 255) {
+        if (arg_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowArg));
         }
         const node = expr::CallExpr::new(self.store_span_since(start), arg_count as u8, operand, args);
@@ -1315,7 +1541,7 @@ pub struct Parser {
         }
 
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
-        if (field_count > 255) {
+        if (field_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowPattern));
         }
         const node = ast::pattern::TuplePattern::new(
@@ -1368,7 +1594,7 @@ pub struct Parser {
         }
 
         const {_0: field_index, _1: field_count } = self.store_extra_sized(field_start, @sizeof(0 as ast::pattern::DestructPatternField));
-        if (field_count > 255) {
+        if (field_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowPattern));
         }
         const node = ast::pattern::DestructPattern::new(
@@ -1405,7 +1631,7 @@ pub struct Parser {
         }
 
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
-        if (field_count > 255) {
+        if (field_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowPattern));
         }
         const node = ast::pattern::ArrayPattern::new(
@@ -1535,7 +1761,7 @@ pub struct Parser {
         }
 
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
-        if (field_count > 65535) {
+        if (field_count > 65535 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowParam));
         }
 
@@ -1571,7 +1797,7 @@ pub struct Parser {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
         const {_0: field_index, _1: field_count } = self.store_extra(field_start);
-        if (field_count > 65535) {
+        if (field_count > 65535 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowTuple));
         }
 
@@ -1636,7 +1862,7 @@ pub struct Parser {
         }
 
         const { _0: generics, _1: generic_count } = self.store_extra(generics_start);
-        if (generic_count > 255) {
+        if (generic_count > 255 as u64) {
             ereturn Result::[ast::ty::GenericType, void]::Err(self.error(ErrorType::OverflowGenericArg));
         }
         return Result::[ast::ty::GenericType, void]::Ok(ast::ty::GenericType::new(
@@ -1695,7 +1921,7 @@ pub struct Parser {
         }
 
         const { _0: scopes, _1: scope_count } = self.store_extra(scopes_start);
-        if (scope_count > 255) {
+        if (scope_count > 255 as u64) {
             ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowScope));
         }
         const node = ast::ty::ScopedType::new(
@@ -1805,6 +2031,19 @@ pub struct Parser {
             }
             self.advance();
         }
+    }
+
+    /////////////
+    // Helpers //
+    /////////////
+    fn parse_identifier(self: *Parser) Result[ast::Identifier, void] {
+        if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
+            ereturn Result::[ast::Identifier, void]::Err(0 as void);
+        }
+        return Result::[ast::Identifier, void]::Ok(ast::Identifier::new(
+            self.store_span_since(self.prev),
+            self.ast.interner.intern(self.prev.lexeme),
+        ));
     }
 
     /////////////
