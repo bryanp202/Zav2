@@ -174,7 +174,15 @@ pub struct Lexer {
                 'a' => return self.try_keyword(TokenType::Var, @len("ar".*), "ar");
                 'o' => return self.try_keyword(TokenType::VoidType, @len("oid".*), "oid");
             }
-            'w' => return self.try_keyword(TokenType::While, @len("hile".*), "hile");
+            'w' => switch (self.peek()) {
+                'h' => {
+                    self.advance();
+                    switch (self.peek()) {
+                        'e' => return self.try_keyword(TokenType::Where, @len("ere".*), "ere");
+                        'i' => return self.try_keyword(TokenType::While, @len("ile".*), "ile");
+                    }
+                }
+            }
         }
         return self.identifier();
     }
@@ -487,6 +495,7 @@ pub enum TokenType {
     Use,
     Var,
     While,
+    Where,
     Error,
     Eof,
 }
