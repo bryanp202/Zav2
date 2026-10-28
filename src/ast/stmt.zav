@@ -36,21 +36,20 @@ pub struct DeferStmt {
     type: AstNodeType;
     pad: u8;
     is_err: bool;
-    expr: AstNodeIndex;
+    stmt: AstNodeIndex;
 
-    pub fn new(is_err: bool, expr: AstNodeIndex) DeferStmt {
+    pub fn new(is_err: bool, stmt: AstNodeIndex) DeferStmt {
         var self: DeferStmt = undefined;
         self.type = AstNodeType::DeferStmt;
         self.pad = 0 as u8;
         self.is_err = is_err;
-        self.expr = expr;
+        self.stmt = stmt;
         return self;
     }
 
     pub fn fmt(self: *const DeferStmt, fmt: *Formatter, ast: *const Ast, indent: u64) void {
         fmt.unsafe_cstr_ptr(self.is_err ? "edefer " as *const u8 : "defer " as *const u8);
-        ast.display_node(fmt, self.expr._private_index, indent);
-        fmt.unsafe_cstr_ptr(";");
+        ast.display_node(fmt, self.stmt._private_index, indent);
     }
 }
 
