@@ -7,9 +7,14 @@ use ::std::mem;
 use ::std::sync::RwLock;
 use ::std::sync::Arc;
 use ::std::option::Option;
+use ::std::fmt::Formatter;
 
 pub struct Symbol {
     _id: u32;
+
+    pub fn fmt(self: *const Symbol, fmt: *Formatter) void {
+        fmt.uint(self._id);
+    }
 
     pub fn [H] hash(self: *const Symbol, hasher: *Hasher) void {
         hasher.update_state(&self._id, @sizeof(self._id));
