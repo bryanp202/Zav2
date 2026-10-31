@@ -163,7 +163,7 @@ pub struct FnItem {
             fmt.newline();
 
             const where_clause_indent = indent + 1 as u8;
-            const first_where = &ast.extra.items[self.params._private_index];
+            const first_where = &ast.extra.items[self.wheres._private_index];
             for (0..self.where_count, first_where) |_, where_clause| {
                 Ast::fmt_indent(fmt, where_clause_indent);
                 ast.display_node(fmt, where_clause.*, indent);
@@ -179,34 +179,46 @@ pub struct FnItem {
 
 pub struct StructItem {
     type: AstNodeType;
+    pad: u8;
     public: bool;
     generic_count: u8;
+    where_count: u8;
     field_count: u16;
-    pad: u16;
+    item_count: u16;
     name_span: SpanIndex;
     name_sym: Symbol;
-    generics: AstExtraIndex; // list of AstNode (items)
-    fields: AstExtraIndex; // list of Field
+    generics: AstExtraIndex; // list of Identifier
+    wheres: AstExtraIndex; // list of Nodes (exprs)
+    fields: AstExtraIndex; // list of StructureFields
+    items: AstExtraIndex; // list of nodes (items)
 
     pub fn new(
         public: bool,
         generic_count: u8,
+        where_count: u8,
         field_count: u16,
+        item_count: u16,
         name_span: SpanIndex,
         name_sym: Symbol,
         generics: AstExtraIndex,
+        wheres: AstExtraIndex,
         fields: AstExtraIndex,
+        items: AstExtraIndex,
     ) StructItem {
         var self: StructItem = undefined;
         self.type = AstNodeType::StructItem;
+        self.pad = 0 as u8;
         self.public = public;
         self.generic_count = generic_count;
+        self.where_count = where_count;
         self.field_count = field_count;
-        self.pad = 0 as u16;
+        self.item_count = item_count;
         self.name_span = name_span;
         self.name_sym = name_sym;
         self.generics = generics;
+        self.wheres = wheres;
         self.fields = fields;
+        self.items = items;
         return self;
     }
 
@@ -228,7 +240,25 @@ pub struct StructItem {
             fmt.unsafe_cstr_ptr("]");
         }
 
-        fmt.unsafe_cstr_ptr(" {");
+        if (self.where_count > 0) {
+            fmt.newline();
+            Ast::fmt_indent(fmt, indent);
+            fmt.unsafe_cstr_ptr("where");
+            fmt.newline();
+
+            const where_clause_indent = indent + 1 as u8;
+            const first_where = &ast.extra.items[self.wheres._private_index];
+            for (0..self.where_count, first_where) |_, where_clause| {
+                Ast::fmt_indent(fmt, where_clause_indent);
+                ast.display_node(fmt, where_clause.*, indent);
+                fmt.unsafe_cstr_ptr(",");
+                fmt.newline();
+            }
+        } else {
+            fmt.unsafe_cstr_ptr(" ");
+        }
+
+        fmt.unsafe_cstr_ptr("{");
         if (self.field_count > 0) {
             fmt.newline();
             const field_indent = indent + 1 as u8;
@@ -237,6 +267,19 @@ pub struct StructItem {
                 ast.display_node(fmt, field.*, field_indent);
                 fmt.newline();
             }
+        }
+
+        if (self.item_count > 0) {
+            const item_indent = indent + 1 as u8;
+            for (0..self.item_count, &ast.extra.items[self.items._private_index]) |_, item| {
+                fmt.newline();
+                Ast::fmt_indent(fmt, item_indent);
+                ast.display_node(fmt, item.*, item_indent);
+                fmt.newline();
+            }
+        }
+        if (self.field_count + self.item_count > 0) {
+            Ast::fmt_indent(fmt, indent);
         }
         fmt.unsafe_cstr_ptr("}");
     }
@@ -251,7 +294,7 @@ pub struct UnionItem {
     name_span: SpanIndex;
     name_sym: Symbol;
     generics: AstExtraIndex; // list of Identifier
-    fields: AstExtraIndex; // list of Items
+    fields: AstExtraIndex; // list of StructureFields
 
     pub fn new(
         public: bool,
@@ -302,6 +345,7 @@ pub struct UnionItem {
                 ast.display_node(fmt, field.*, field_indent);
                 fmt.newline();
             }
+            Ast::fmt_indent(fmt, indent);
         }
         fmt.unsafe_cstr_ptr("}");
     }

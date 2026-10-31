@@ -134,7 +134,7 @@ pub struct Lexer {
                 '8' => return self.try_keyword(TokenType::I8Type, @len("8".*), "8");
                 '1' => return self.try_keyword(TokenType::I16Type, @len("16".*), "16");
                 '3' => return self.try_keyword(TokenType::I32Type, @len("32".*), "32");
-                '6' => return self.try_keyword(TokenType::I8Type, @len("64".*), "64");
+                '6' => return self.try_keyword(TokenType::I64Type, @len("64".*), "64");
                 'f' => return self.try_keyword(TokenType::If, @len("f".*), "f");
             }
             'l' => return self.try_keyword(TokenType::Loop, @len("oop".*), "oop");
@@ -159,7 +159,7 @@ pub struct Lexer {
                 '8' => return self.try_keyword(TokenType::U8Type, @len("8".*), "8");
                 '1' => return self.try_keyword(TokenType::U16Type, @len("16".*), "16");
                 '3' => return self.try_keyword(TokenType::U32Type, @len("32".*), "32");
-                '6' => return self.try_keyword(TokenType::U8Type, @len("64".*), "64");
+                '6' => return self.try_keyword(TokenType::U64Type, @len("64".*), "64");
                 'n' => {
                     self.advance();
                     switch (self.peek()) {

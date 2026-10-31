@@ -46,7 +46,7 @@ pub struct DestructPattern {
     }
 
     pub fn fmt(self: *const DestructPattern, fmt: *Formatter, ast: *const Ast, indent: u64) void {
-        fmt.unsafe_cstr_ptr("{");
+        fmt.unsafe_cstr_ptr("{ ");
         if (self.field_count > 0) {
             const first_field = &ast.extra.items[self.fields._private_index] as *DestructPatternField;
             first_field.fmt(fmt, ast, indent);
@@ -56,7 +56,7 @@ pub struct DestructPattern {
             }
             if (self.ignore_rest) fmt.unsafe_cstr_ptr(", ..");
         } else if (self.ignore_rest) fmt.unsafe_cstr_ptr("..");
-        fmt.unsafe_cstr_ptr("}");
+        fmt.unsafe_cstr_ptr(" }");
     }
 }
 

@@ -4,6 +4,7 @@ use ::std::path::PathBuf;
 use ::std::io::IoError;
 use ::std::io::fs;
 use ::std::result::Result;
+use ::std::option::Option;
 use ::std::range::Range;
 use ::std::mem;
 use ::std::tuple::Tuple2;
@@ -120,12 +121,12 @@ pub struct Parser {
         self.advance();
 
         while (!self.at_end()) {
-            const item = self.parse_item();
-            if (item.is_err()) {
+            const global_item = self.parse_item();
+            if (global_item.is_err()) {
                 self.global_synchronize();
                 continue;
             }
-            self.scratch.push(item.unwrap_ok()._private_index);
+            self.scratch.push(global_item.unwrap_ok()._private_index);
         }
 
         const { _0: items, _1: total_items } = self.store_extra(items_start);
@@ -177,14 +178,14 @@ pub struct Parser {
             TokenType::Enum => return self.parse_enum_item(is_public);
             TokenType::Mod => return self.parse_mod_item(is_public);
             TokenType::Fn => return self.parse_fn_item(is_public);
-            // TokenType::Union => return self.parse_union_item(is_public);
-            // TokenType::Struct => return self.parse_struct_item(is_public);
+            TokenType::Union => return self.parse_union_item(is_public);
+            TokenType::Struct => return self.parse_struct_item(is_public);
             // TokenType::Use => return self.parse_use_item(is_public);
-            else => ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::InvalidItem));
+            else => return Result::[AstNodeIndex, void]::Err(self.error(ErrorType::InvalidItem));
         }
     }
 
-    pub fn parse_decl_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+    fn parse_decl_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
         const index = self.reserve_node(@sizeof(0 as item::DeclItem));
         edefer self.unreserve_node(index);
 
@@ -228,7 +229,7 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    pub fn parse_mod_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+    fn parse_mod_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
         const identifier = self.parse_identifier();
         if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         const name = identifier.unwrap_ok();
@@ -241,7 +242,7 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    pub fn parse_enum_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+    fn parse_enum_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
         const variant_start = self.start_scratch();
         defer self.clear_scratch(variant_start);
 
@@ -283,7 +284,7 @@ pub struct Parser {
         return Result::[AstNodeIndex, void]::Ok(index);
     }
 
-    pub fn parse_fn_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+    fn parse_fn_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
         const index = self.reserve_node(@sizeof(0 as item::FnItem));
         edefer self.unreserve_node(index);
         const scratch_start = self.start_scratch();
@@ -293,90 +294,29 @@ pub struct Parser {
         if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         const name = identifier.unwrap_ok();
 
-        const generic_param_start = self.curr;
-        if (self.match(TokenType::LeftSquare)) {
-            while (!self.check(TokenType::RightSquare)) {
-                const identifier = self.parse_identifier();
-                if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-                const generic_param = identifier.unwrap_ok();
-                self.push_scratch_chunks(&generic_param as *u32, @sizeof(generic_param));
-
-                if (!self.match(TokenType::Comma)) break;
-            }
-            if (!self.eat(TokenType::RightSquare, ErrorType::ExpectedRightSquare)) {
-                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-            }
-        }
-        const { _0: generic_params, _1: generic_count } = self.store_extra_sized(
-            scratch_start,
-            @sizeof(0 as ast::Identifier),
-        );
-        if (generic_count > 255 as u64) {
-            ereturn Result::[AstNodeIndex, void]::Err(self.error_since(
-                generic_param_start,
-                ErrorType::OverflowGenericParam)
-            );
-        }
+        const generic_params = self.parse_generic_params(scratch_start);
+        if (generic_params.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const { _0: generics, _1: generic_count } = generic_params.unwrap_ok();
         self.clear_scratch(scratch_start);
-
 
         if (!self.eat(TokenType::LeftParen, ErrorType::ExpectedLeftParen)) {
             ereturn Result::[AstNodeIndex, void]::Err(0 as void);
         }
-        const args_start = self.prev;
-        while (!self.check(TokenType::RightParen)) {
-            const pattern = self.parse_pattern();
-            if (pattern.is_err()) ereturn pattern;
-            if (!self.eat(TokenType::Colon, ErrorType::ExpectedColon)) {
-                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-            }
-            const type = self.parse_type();
-            if (type.is_err()) ereturn type;
-
-            const param = ast::Parameter::new(pattern.unwrap_ok(), type.unwrap_ok());
-            self.push_scratch_chunks(&param as *u32, @sizeof(param));
-
-            if (!self.match(TokenType::Comma)) break;
-        }
-        if (!self.eat(TokenType::RightParen, ErrorType::ExpectedRightParen)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
-
-        const { _0: params, _1: param_count } = self.store_extra_sized(
-            scratch_start,
-            @sizeof(0 as ast::Parameter),
-        );
-        if (param_count > 255 as u64) {
-            ereturn Result::[AstNodeIndex, void]::Err(self.error_since(
-                generic_param_start,
-                ErrorType::OverflowParam)
-            );
-        }
+        const fn_params = self.parse_params(scratch_start, TokenType::RightParen, ErrorType::ExpectedRightParen);
+        if (fn_params.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const { _0: params, _1: param_count } = fn_params.unwrap_ok();
         self.clear_scratch(scratch_start);
 
         const ret_type = self.parse_type();
         if (ret_type.is_err()) ereturn ret_type;
 
-        if (self.match(TokenType::Where)) {
-            while (!self.check(TokenType::LeftBrace)) {
-                const expr = self.parse_expr();
-                if (expr.is_err()) ereturn expr;
-                self.scratch.push(expr.unwrap_ok()._private_index);
-
-                if (!self.match(TokenType::Comma)) break;
-            }
-        }
+        const where_clauses = self.parse_where_clauses(scratch_start);
+        if (where_clauses.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const { _0: wheres, _1: where_count } = where_clauses.unwrap_ok();
         if (!self.eat(TokenType::LeftBrace, ErrorType::ExpectedLeftBrace)) {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void); 
         }
 
-        const { _0: wheres, _1: where_count } = self.store_extra(scratch_start);
-        if (where_count > 255 as u64) {
-            ereturn Result::[AstNodeIndex, void]::Err(self.error_since(
-                generic_param_start,
-                ErrorType::OverflowWhere)
-            );
-        }
         const body = self.parse_block_stmt();
         if (body.is_err()) ereturn body;
 
@@ -387,12 +327,184 @@ pub struct Parser {
             where_count as u8,
             name.span,
             name.sym,
-            generic_params,
+            generics,
             params,
             wheres,
             ret_type.unwrap_ok(),
             body.unwrap_ok(),
         );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_union_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as item::UnionItem));
+        edefer self.unreserve_node(index);
+        const scratch_start = self.start_scratch();
+        defer self.clear_scratch(scratch_start);
+
+        const identifier = self.parse_identifier();
+        if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const name = identifier.unwrap_ok();
+
+        const generic_params = self.parse_generic_params(scratch_start);
+        if (generic_params.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const { _0: generics, _1: generic_count } = generic_params.unwrap_ok();
+        self.clear_scratch(scratch_start);
+
+        if (!self.eat(TokenType::LeftBrace, ErrorType::ExpectedLeftBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        while (!self.check(TokenType::RightBrace)) {
+            const field = self.parse_structure_field();
+            if (field.is_err()) ereturn field;
+            self.scratch.push(field.unwrap_ok()._private_index);
+        }
+        if (!self.eat(TokenType::RightBrace, ErrorType::ExpectedRightBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const { _0: fields, _1: field_count } = self.store_extra(scratch_start);
+        if (field_count > 65535) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowField));
+        }
+
+        const node = item::UnionItem::new(
+            is_public,
+            generic_count as u8,
+            field_count as u16,
+            name.span,
+            name.sym,
+            generics,
+            fields,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_struct_item(self: *Parser, is_public: bool) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as item::StructItem));
+        edefer self.unreserve_node(index);
+        const scratch_start = self.start_scratch();
+        defer self.clear_scratch(scratch_start);
+
+        const identifier = self.parse_identifier();
+        if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const name = identifier.unwrap_ok();
+
+        
+        const generic_params = self.parse_generic_params(scratch_start);
+        if (generic_params.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const { _0: generics, _1: generic_count } = generic_params.unwrap_ok();
+        self.clear_scratch(scratch_start);
+
+        const where_clauses = self.parse_where_clauses(scratch_start);
+        if (where_clauses.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const { _0: wheres, _1: where_count } = where_clauses.unwrap_ok();
+        self.clear_scratch(scratch_start);
+        if (!self.eat(TokenType::LeftBrace, ErrorType::ExpectedLeftBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+
+        while (self.check(TokenType::Identifier)) {
+            const field = self.parse_structure_field();
+            if (field.is_err()) ereturn field;
+            self.scratch.push(field.unwrap_ok()._private_index);
+        }
+        const { _0: fields, _1: field_count } = self.store_extra(scratch_start);
+        if (field_count > 65535) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowField));
+        }
+        self.clear_scratch(scratch_start);
+
+        while (!self.check(TokenType::RightBrace)) {
+            const associated_item = self.parse_item();
+            if (associated_item.is_err()) ereturn associated_item;
+            self.scratch.push(associated_item.unwrap_ok()._private_index);
+        }
+        const { _0: items, _1: item_count } = self.store_extra(scratch_start);
+        if (item_count > 65535) {
+            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowField));
+        }
+
+        if (!self.eat(TokenType::RightBrace, ErrorType::ExpectedRightBrace)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const node = item::StructItem::new(
+            is_public,
+            generic_count as u8,
+            where_count as u8,
+            field_count as u16,
+            item_count as u16,
+            name.span,
+            name.sym,
+            generics,
+            wheres,
+            fields,
+            items,
+        );
+        self.set_node(index, &node as *u32);
+        return Result::[AstNodeIndex, void]::Ok(index);
+    }
+
+    fn parse_generic_params(self: *Parser, scratch_start: u64) Result[Tuple2[AstExtraIndex, u64], void] {
+        if (self.match(TokenType::LeftSquare)) {
+            while (!self.check(TokenType::RightSquare)) {
+                const identifier = self.parse_identifier();
+                if (identifier.is_err()) ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(0 as void);
+                const generic = identifier.unwrap_ok();
+
+                self.push_scratch_chunks(&generic as *u32, @sizeof(generic));
+                if (!self.match(TokenType::Comma)) break;
+            }
+            if (!self.eat(TokenType::RightSquare, ErrorType::ExpectedRightSquare)) {
+                ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(0 as void);
+            }
+        }
+        
+        const generic_params = self.store_extra_sized(scratch_start, @sizeof(0 as ast::Identifier));
+        if (generic_params._1 > 255 as u64) {
+            ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(self.error(ErrorType::OverflowGenericParam));
+        }
+        return Result::[Tuple2[AstExtraIndex, u64], void]::Ok(generic_params);
+    }
+
+    fn parse_where_clauses(self: *Parser, scratch_start: u64) Result[Tuple2[AstExtraIndex, u64], void] {
+        if (self.match(TokenType::Where)) {
+            while (!self.check(TokenType::LeftBrace)) {
+                const expr = self.parse_expr();
+                if (expr.is_err()) ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(0 as void);
+                self.scratch.push(expr.unwrap_ok()._private_index);
+
+                if (!self.eat(TokenType::Comma, ErrorType::ExpectedComma)) {
+                    ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(0 as void);
+                }
+            }
+        }
+        const where_clauses = self.store_extra(scratch_start);
+        if (where_clauses._1 > 255 as u64) {
+            ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(self.error(ErrorType::OverflowWhere));
+        }
+        return Result::[Tuple2[AstExtraIndex, u64], void]::Ok(where_clauses);
+    }
+
+    fn parse_structure_field(self: *Parser) Result[AstNodeIndex, void] {
+        const index = self.reserve_node(@sizeof(0 as item::StructureField));
+        edefer self.unreserve_node(index);
+
+        const identifier = self.parse_identifier();
+        if (identifier.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const name = identifier.unwrap_ok();
+
+        if (!self.eat(TokenType::Colon, ErrorType::ExpectedColon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const type = self.parse_type();
+        if (type.is_err()) ereturn type;
+
+        if (!self.eat(TokenType::Semicolon, ErrorType::ExpectedSemicolon)) {
+            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        }
+        const node = item::StructureField::new(name.span, name.sym, type.unwrap_ok());
         self.set_node(index, &node as *u32);
         return Result::[AstNodeIndex, void]::Ok(index);
     }
@@ -1061,28 +1173,9 @@ pub struct Parser {
         const param_start = self.start_scratch();
         defer self.clear_scratch(param_start);
 
-        while (!self.check(TokenType::Pipe)) {
-            const pattern = self.parse_pattern();
-            if (pattern.is_err()) ereturn pattern;
-
-            if (!self.eat(TokenType::Colon, ErrorType::ExpectedColon)) {
-                ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-            }
-            const type = self.parse_type();
-            if (type.is_err()) ereturn type;
-
-            const param = ast::Parameter::new(pattern.unwrap_ok(), type.unwrap_ok());
-            self.push_scratch_chunks(&param as *u32, @sizeof(param));
-            if (!self.match(TokenType::Comma)) break;
-        }
-        if (!self.eat(TokenType::Pipe, ErrorType::ExpectedPipe))  {
-            ereturn Result::[AstNodeIndex, void]::Err(0 as void);
-        }
-
-        const { _0: params, _1: param_count } = self.store_extra_sized(param_start, @sizeof(0 as ast::Parameter));
-        if (param_count > 255 as u64) {
-            ereturn Result::[AstNodeIndex, void]::Err(self.error(ErrorType::OverflowParam));
-        }
+        const lambda_params = self.parse_params(param_start, TokenType::Pipe, ErrorType::ExpectedPipe);
+        if (lambda_params.is_err()) ereturn Result::[AstNodeIndex, void]::Err(0 as void);
+        const { _0: params, _1: param_count } = lambda_params.unwrap_ok();
 
         var ret_type: OptionalAstNodeIndex = undefined;
         if (self.match(TokenType::SmallArrow)) {
@@ -1935,6 +2028,49 @@ pub struct Parser {
     }
 
     /////////////////////
+    // Parsing Helpers //
+    /////////////////////
+    fn parse_identifier(self: *Parser) Result[ast::Identifier, void] {
+        if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
+            ereturn Result::[ast::Identifier, void]::Err(0 as void);
+        }
+        return Result::[ast::Identifier, void]::Ok(ast::Identifier::new(
+            self.store_span_since(self.prev),
+            self.ast.interner.intern(self.prev.lexeme),
+        ));
+    }
+
+    fn parse_params(
+        self: *Parser,
+        scratch_start: u64,
+        end_token: TokenType,
+        error_type: ErrorType
+    ) Result[Tuple2[AstExtraIndex, u64], void] {
+        while (!self.check(end_token)) {
+           const pattern = self.parse_pattern();
+            if (pattern.is_err()) ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(0 as void);
+            if (!self.eat(TokenType::Colon, ErrorType::ExpectedColon)) {
+                ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(0 as void);
+            }
+            const type = self.parse_type();
+            if (type.is_err()) Result::[Tuple2[AstExtraIndex, u64], void]::Err(0 as void);
+            const param = ast::Parameter::new(pattern.unwrap_ok(), type.unwrap_ok());
+
+            self.push_scratch_chunks(&param as *u32, @sizeof(param));
+            if (!self.match(TokenType::Comma)) break;
+        }
+        if (!self.eat(end_token, error_type)) {
+            ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(0 as void);
+        }
+
+        const params = self.store_extra_sized(scratch_start, @sizeof(0 as ast::Parameter));
+        if (params._1 > 255 as u64) {
+            ereturn Result::[Tuple2[AstExtraIndex, u64], void]::Err(self.error(ErrorType::OverflowParam));
+        }
+        return Result::[Tuple2[AstExtraIndex, u64], void]::Ok(params);
+    }
+
+    /////////////////////
     // Private Helpers //
     /////////////////////
     fn error(self: *Parser, type: ErrorType) void {
@@ -2031,19 +2167,6 @@ pub struct Parser {
             }
             self.advance();
         }
-    }
-
-    /////////////
-    // Helpers //
-    /////////////
-    fn parse_identifier(self: *Parser) Result[ast::Identifier, void] {
-        if (!self.eat(TokenType::Identifier, ErrorType::ExpectedIdentifier)) {
-            ereturn Result::[ast::Identifier, void]::Err(0 as void);
-        }
-        return Result::[ast::Identifier, void]::Ok(ast::Identifier::new(
-            self.store_span_since(self.prev),
-            self.ast.interner.intern(self.prev.lexeme),
-        ));
     }
 
     /////////////
