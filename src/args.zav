@@ -133,6 +133,8 @@ fn parse_long_arg(settings: *CompileSettings, args: *const Slice[*const u8], i: 
                 if (stage.is_some() and settings.until_stage == Stage::None) {
                     settings.until_stage = stage.unwrap();
                     return 1;
+                } else {
+                    settings.display_help = true;
                 }
             }
         }
